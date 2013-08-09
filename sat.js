@@ -12,6 +12,12 @@ function Problem() {
 exports.Problem = Problem;
 
 Problem.prototype = {
+   mk_true: function () {
+      return Infinity;
+   },
+   mk_false: function () {
+      return -Infinity;
+   },
    mk_var: function() {
       return ++this.lastvar;
    },
@@ -22,7 +28,17 @@ Problem.prototype = {
       return acc;
    },
    clause: function(atoms) {
-      this.clauses.push(atoms.concat());
+      var clause = [], meaningful = true;
+      atoms.forEach(function (atom) {
+         if (atom === Infinity)
+            meaningful = false;
+         else if (atom === -Infinity)
+            /* skip */;
+         else
+            clause.push(atom);
+      }, this);
+      if (meaningful)
+         this.clauses.push(clause);
    },
    to_dimacs: function() {
       var s = "p cnf " + this.lastvar + " " + this.clauses.length + "\n";
