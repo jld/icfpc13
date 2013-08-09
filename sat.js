@@ -1,5 +1,7 @@
 // -*- Mode: javascript; indent-tabs-mode: nil; js-indent-level: 3 -*-
 "use strict";
+var cld = require("child_process");
+var DEFAULT_SOLVER = "picosat";
 
 function listify(x) {
    return x instanceof Array ? x : [x];
@@ -40,12 +42,63 @@ Problem.prototype = {
       if (meaningful)
          this.clauses.push(clause);
    },
-   to_dimacs: function() {
-      var s = "p cnf " + this.lastvar + " " + this.clauses.length + "\n";
+   to_dimacs: function(on_data) {
+      on_data("p cnf " + this.lastvar + " " + this.clauses.length + "\n");
       this.clauses.forEach(function(clause) {
-         s += clause.join(" ") + " 0\n";
+         on_data(clause.join(" ") + " 0\n");
       });
+   },
+   to_dimacs_str: function() {
+      var s = "";
+      this.to_dimacs(function(data) { s += data });
       return s;
+   },
+   solve: function(onSolved, /*opt*/ solver_cmd, solver_opts) {
+      solver_cmd = solver_cmd || DEFAULT_SOLVER;
+      var solver = cld.spawn(solver_cmd, solver_opts);
+      solver.stderr.on('data', function(data) {
+         data.split("\n").forEach(function(line) {
+            if (line.length)
+               console.log(solver_cmd + ": " + line);
+         });
+      });
+      var satp;
+      var atoms = [];
+      solver.stdout.on('data', function(data) {
+         data.toString().split("\n").forEach(function(line) {
+            switch (line[0]) {
+            case 's':
+               satp = line.slice(2) == "SATISFIABLE";
+               break;
+            case 'v':
+               line.slice(2).split(" ").map(Number).forEach(function(atom) { atoms.push(atom) });
+               break;
+            case undefined:
+               break;
+            default:
+               console.log(solver_cmd + ": " + line);
+            }
+         });
+      });
+      solver.on('exit', function(code, signal) {
+         if (signal) {
+            console.log(solver_cmd + " exited on signal " + signal);
+            onSolved(undefined);
+         } else if (typeof satp !== 'boolean') {
+            console.log(solver_cmd + " did not decide!");
+            onSolved(undefined);
+         } else if (!satp) {
+            onSolved(null);
+         } else if (atoms[atoms.length - 1] !== 0) {
+            console.log(solver_cmd + " did not finish writing assignments!");
+            onSolved(undefined);
+         } else {
+            atoms.pop();
+            onSolved(new Solution(atoms));
+         }
+      });
+      this.to_dimacs(function(data) { solver.stdin.write(data) });
+      solver.stdin.end();
    },
    ////
    implies: function(antecedents, consequents) {
@@ -82,8 +135,8 @@ Problem.prototype = {
       this.pop_ge1(atoms);
       this.pop_le1(atoms);
    },
-   parity: function(atoms) {
-      var parity = arguments[1] ? 1 : 0;
+   parity: function(atoms, /*opt*/ parity) {
+      parity = parity ? 1 : 0;
       var n = atoms.length, nn = 1 << n;
       for (var i = 0; i < nn; ++i) {
          // This could probably be optimized.  It probably doesn't matter.
@@ -110,5 +163,26 @@ Problem.prototype = {
       this.eq_if(-ctl, input0, output);
       this.eq_if(ctl, input1, output);
       return output;
-   }
+   },
+   not_that_one: function(soln) {
+      this.implies(soln.assigned, []);
+   },
 }
+
+
+function Solution(atoms) {
+   this.assigned = atoms;
+   this.assignedp = [];
+   atoms.forEach(function (atom) {
+      this.assignedp[Math.abs(atom)] = atom > 0;
+   }, this);
+}
+
+Solution.prototype = {
+   get: function(index) {
+      return this.assignedp[index];
+   },
+   mapget: function(indices) {
+      return indices.map(function(index) { return this.get(index) }, this);
+   },
+};
