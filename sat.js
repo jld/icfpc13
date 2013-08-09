@@ -70,17 +70,17 @@ Problem.prototype = {
       }, this);
       return output;
    },
-   ge1: function(atoms) {
-      this.clause(atoms);
+   pop_ge1: function(atoms) {
+      this.implies([], atoms);
    },
-   le1: function(atoms) {
+   pop_le1: function(atoms) {
       for (var i = 0; i < atoms.length; ++i)
          for (var j = i + 1; j < atoms.length; ++j)
-            this.clause([-atoms[i], -atoms[j]]);
+            this.implies([atoms[i], atoms[j]], []);
    },
-   eq1: function(atoms) {
-      this.ge1(atoms);
-      this.le1(atoms);
+   pop_eq1: function(atoms) {
+      this.pop_ge1(atoms);
+      this.pop_le1(atoms);
    },
    parity: function(atoms) {
       var parity = arguments[1] ? 1 : 0;
