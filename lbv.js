@@ -36,7 +36,7 @@ function from_hex(s) {
    var a = mk_word(function () { return false });
    for (var i = 0, j = s.length - 1; j >= 0 && i < word; i+=4, --j) {
       var x = parseInt(s[j], 16);
-      for (k = 0; k < 4; ++k)
+      for (var k = 0; k < 4; ++k)
          if (x & (1 << k))
             a[i + k] = true;
    }
