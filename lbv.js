@@ -78,3 +78,86 @@ exports.ALU = ALU; // for "unit testing"
 ALU.prototype = {
 }
 
+
+function Program(p, size) {
+   this.prob = p;
+   this.x = p.mk_vars(word);
+   this.alus = iota(size, function() { return new ALU(p, this.x) }, this);
+   this.out = alus[0].out;
+   function zeroes() {
+      return iota(size, function() { iota(size, function() { return p.mk_false }) });
+   }
+   // inroute[0][i][i+1] = [i]inenb[0]
+   // inroute[l+1][i][k+1] = {j} [i]inenb[l+1] && inroute[l][i][j] && rightmost[j][k]
+   // rightmost[i][i] = ![i]inenb[0]
+   // rightmost[i][k] = {j,l} ![i]inenb[l+1] && inroute[l][i][j] && rightmost[j][k]
+   // ...
+   // Routing.
+   this.inroute = iota(3, zeroes); // [which][to][from]
+   for (var i = 0; i < size; ++i) {
+      // Special case: in0 is the next one or not at all.
+      if (i < size - 1)
+         this.inroute[0][i][i+1] = p.mk_var();
+      for (var j = i + 2; j < size; ++j)
+         for (var k = 1; k < 3; ++k)
+            if (j > i + k) {
+               var r = this.inroute[k][i][j] = p.mk_var();
+               p.eqn_if(r, this.alus[i].input[k], this.alus[j].output);
+            }
+   }
+   // Output must go somewhere:
+   for (var i = 0; i < size; ++i) {
+      var outbound = [];
+      for (var j = 0; j < i; ++j)
+         for (var k = 0; k < 3; ++k)
+            outbound.push(this.inroute[k][j][i]);
+      p.pop_eq1(outbound);
+   }
+   // Input sometimes comes from somewhere.
+   for (var i = 0; i < size; ++i)
+      for (var j = 0; j < 3; ++j) {
+         // There must be either exactly one input, or none and !inenb:
+         p.pop_eq1(this.inroute[j][i].concat([-this.alus[i].inenb[j]]));
+      }
+   // Find the rightmost.
+   this.rightmost = zeroes();
+   for (var i = size - 1; i >= 0; --i) {
+      // Iff no arguments, it's its own rightmost.
+      this.rightmost[i][i] = -this.alus[i].inenb[0];
+      for (var j = i + 1; j < size; ++j) {
+         var acc = [];
+         for (var k = i + 1; k <= j; ++k)
+            for (var l = 0; l < 3; ++l)
+               // If no |l+1|th argument, rightmost is lth arg's rightmost.
+               acc.push(p.mk_and([-(this.alus[i].inenb[l+1] || p.mk_false()),
+                                  this.inroute[l][i][k],
+                                  this.rightmost[k][j]]));
+         this.rightmost[i][j] = p.mk_or(acc);
+      }
+   }
+   // Route the |l+1|th arg to the |l|'s arg's rightmost + 1.
+   for (var i = 0; i < size; ++i)
+      for (var j = i + 1; j < size; ++j)
+         for (var k = j; k < size - 1; ++k)
+            for (var l = 0; l < 3 - 1; ++l)
+               p.implies([this.alus[i].inenb[l+1],
+                          this.inroute[l][i][j], this.rightmost[j][k]],
+                         this.inroute[l+1][i][k+1]);
+   // And this *should* completely determine the routing matrices given the inenbs.
+   // No proof of this claim is herein attempted.
+}
+
+Program.prototype = {
+   constrain: function(input, output) {
+      inat = mk_word(function(i) { return input[i] ? this.x[i] : -this.x[i] }, this);
+      for (i = 0; i < word; ++i)
+         this.prob.implies(inat, output[i] ? this.out[i] : -this.out[i]);
+   },
+   solve: function(on_ready, this_arg) {
+      this.prob.solve(function(soln) {
+         this.soln = soln;
+         on_ready.call(this_arg, this);
+      }, this);
+   },
+}
+
