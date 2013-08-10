@@ -15,9 +15,9 @@ exports.word = 64;
 // xx1nn => #UD if nn != 00
 // 11xxx => #UD
 // So,
-// inenb0 = or(ctl3, ctl4)
-// inenb1 = ctl4
-// inenb2 = and(ctl2, ctl4)
+// inenb0 = or(op3, op4)
+// inenb1 = op4
+// inenb2 = and(op2, op4)
 
 function iota(n, f, this_arg) {
    var a = Array(n);
@@ -31,17 +31,17 @@ function mk_word(f, this_arg) {
 }
 
 function ALU(p, x) {
-   var ctl = this.ctl = p.mk_vars(5);
+   var op = this.op = p.mk_vars(5);
    this.input = iota(3, function() { p.mk_vars(word) });
-   this.inenb = [p.mk_or([ctl[3], ctl[4]]),
-                 ctl[4],
-                 p.mk_and([ctl[2], ctl[4]])];
+   this.inenb = [p.mk_or([op[3], op[4]]),
+                 op[4],
+                 p.mk_and([op[2], op[4]])];
 
    var zero = mk_word(function() { return p.mk_false() });
    for (var i = 0; i < 3; ++i)
       p.eqn_if(-this.inenb[i], this.input[i], zero);
 
-   var tconst = mk_word(function(i) { return i == 0 ? this.ctl[0] : p.mk_false() }, this);
+   var tconst = mk_word(function(i) { return i == 0 ? this.op[0] : p.mk_false() }, this);
    var tnot = this.input[0].map(function(a) { return -a });
    var tshl1 = p.mk_shift(this.input[0], 1);
    var tshr1 = p.mk_shift(this.input[0], -1);
@@ -53,25 +53,25 @@ function ALU(p, x) {
    var tplus = p.mk_ripplecarry(this.input[0], this.input[1]);
    var tif0 = p.mk_muxnn(this.input[0], this.input[1], this.input[2]);
 
-   p.implies([-ctl[4], -ctl[3], -ctl[2], ctl[1]], []);
-   p.implies([ctl[2], ctl[1]], []);
-   p.implies([ctl[2], ctl[0]], []);
-   p.implies([ctl[4], ctl[3]], []);
+   p.implies([-op[4], -op[3], -op[2], op[1]], []);
+   p.implies([op[2], op[1]], []);
+   p.implies([op[2], op[0]], []);
+   p.implies([op[4], op[3]], []);
 
-   var m00 = p.mk_muxn(ctl[2], tconst, x);
+   var m00 = p.mk_muxn(op[2], tconst, x);
 
-   var msh1 = p.mk_muxn(ctl[0], tshl1, tshr1);
-   var mshr = p.mk_muxn(ctl[0], tshr4, tshr16);
-   var msh = p.mk_muxn(ctl[1], msh1, mshr);
-   var m01 = p.mk_muxn(ctl[2], msh, tnot);
+   var msh1 = p.mk_muxn(op[0], tshl1, tshr1);
+   var mshr = p.mk_muxn(op[0], tshr4, tshr16);
+   var msh = p.mk_muxn(op[1], msh1, mshr);
+   var m01 = p.mk_muxn(op[2], msh, tnot);
 
-   var mao = p.mk_muxn(ctl[0], tand, tor);
-   var mxp = p.mk_muxn(ctl[0], txor, tplus);
-   var mop2 = p.mk_muxn(ctl[1], mao, mxp);
-   var m10 = p.mk_muxn(ctl[2], mop2, tif0);
+   var mao = p.mk_muxn(op[0], tand, tor);
+   var mxp = p.mk_muxn(op[0], txor, tplus);
+   var mop2 = p.mk_muxn(op[1], mao, mxp);
+   var m10 = p.mk_muxn(op[2], mop2, tif0);
 
-   var m0 = p.mk_muxn(ctl[3], m00, m01);
-   this.output = p.mk_muxn(ctl[4], m0, m10);
+   var m0 = p.mk_muxn(op[3], m00, m01);
+   this.output = p.mk_muxn(op[4], m0, m10);
 }
 exports.ALU = ALU; // for "unit testing"
 
