@@ -21,17 +21,18 @@ exports.word = 64;
 
 function iota(n, f, this_arg) {
    var a = Array(n);
-   for (var i = 0; i < word; ++i)
+   for (var i = 0; i < n; ++i)
       a[i] = f.call(this_arg, i);
    return a;
 }
 
 function mk_word(f, this_arg) {
-   iota(word, f, this_arg);
+   return iota(word, f, this_arg);
 }
 
 
-function ALU(p, x) {
+
+function ALU(p) {
    this.prob = p;
    var op = this.op = p.mk_vars(5);
    this.inenb = [p.mk_or([op[3], op[4]]),
@@ -41,17 +42,17 @@ function ALU(p, x) {
 exports.ALU = ALU; // for "unit testing"
 
 ALU.prototype = {
-   data: function() {
-      return new ALUdata(this);
+   data: function(x) {
+      return new ALUdata(this, x);
    }
 }
 
 
-function ALUdata(ctl) {
+function ALUdata(ctl, x) {
    var p = ctl.prob;
    var op = ctl.op
    this.ctl = ctl;
-   this.input = iota(3, function() { p.mk_vars(word) });
+   this.input = iota(3, function() { return p.mk_vars(word) });
 
    var zero = mk_word(function() { return p.mk_false() });
    for (var i = 0; i < 3; ++i)
@@ -91,13 +92,14 @@ function ALUdata(ctl) {
 }
 
 
-function Program(p, size) {
-   this.prob = p;
-   this.alus = iota(size, function() { return new ALU(p, this.x) }, this);
+function Program(size) {
+   var p = this.prob = new sat.Problem;
+   this.size = size;
+   this.alus = iota(size, function() { return new ALU(p) }, this);
    this.constraints = [];
 
    function zeroes() {
-      return iota(size, function() { iota(size, function() { return p.mk_false }) });
+      return iota(size, function() { return iota(size, function() { return p.mk_false() }) });
    }
    // inroute[0][i][i+1] = [i]inenb[0]
    // inroute[l+1][i][k+1] = {j} [i]inenb[l+1] && inroute[l][i][j] && rightmost[j][k]
@@ -109,7 +111,7 @@ function Program(p, size) {
    for (var i = 0; i < size; ++i) {
       // Special case: in0 is the next one or not at all.
       if (i < size - 1)
-         ctl.inroute[0][i][i+1] = p.mk_var();
+         this.inroute[0][i][i+1] = p.mk_var();
       for (var j = i + 2; j < size; ++j)
          for (var k = 1; k < 3; ++k)
             if (j > i + k)
@@ -117,7 +119,7 @@ function Program(p, size) {
    }
 
    // Output must go somewhere:
-   for (var i = 0; i < size; ++i) {
+   for (var i = 1; i < size; ++i) {
       var outbound = [];
       for (var j = 0; j < i; ++j)
          for (var k = 0; k < 3; ++k)
@@ -162,9 +164,9 @@ exports.Program = Program;
 Program.prototype = {
    constrain: function(input, output) {
       var cons = new ProgramData(this);
+      this.constraints.push(cons);
       this.prob.setn(cons.x, input);
-      this.prob.setn(cons.out, output);
-      this.contraints.push(cons);
+      this.prob.setn(cons.output, output);
    },
    solve: function(on_ready, this_arg) {
       this.prob.solve(function(soln) {
@@ -179,11 +181,11 @@ function ProgramData(ctl) {
    this.ctl = ctl;
    var p = ctl.prob;
    this.x = p.mk_vars(word);
-   this.out = alus[0].out;
-   this.alus = ctl.alus.map(function(alu) { return alu.data() });
+   this.alus = ctl.alus.map(function(alu) { return alu.data(this.x) }, this);
+   this.output = this.alus[0].output;
 
-   for (var i = 0; i < size; ++i)
-      for (var j = i + 1; j < size; ++j)
+   for (var i = 0; i < ctl.size; ++i)
+      for (var j = i + 1; j < ctl.size; ++j)
          for (var k = 0; k < 3; ++k)
             p.eqn_if(ctl.inroute[k][i][j], this.alus[i].input[k], this.alus[j].output);
 }

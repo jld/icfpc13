@@ -58,7 +58,7 @@ Problem.prototype = {
    verbosely: function() {
       this.solver_opts.push("-v");
       return this;
-   }
+   },
    solve: function(on_solved, this_arg) {
       var solver = cld.spawn(this.solver_cmd, this.solver_opts);
       solver.stderr.on('data', function(data) {
