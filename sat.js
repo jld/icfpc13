@@ -252,6 +252,12 @@ Solution.prototype = {
             n |= 1 << i;
       return n;
    },
+   getbin: function(indices) {
+      var s = "";
+      for (var i = 0; i < indices.length; i++)
+         s = (this.get(indices[i]) ? "1" : "0") + s;
+      return s;
+   },
    gethex: function(indices) {
       var s = "";
       for (var i = 0; i < indices.length; i += 4)
