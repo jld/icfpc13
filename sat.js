@@ -10,6 +10,8 @@ function listify(x) {
 function Problem() {
    this.lastvar = 0;
    this.clauses = [];
+   this.solver_cmd = DEFAULT_SOLVER;
+   this.sovler_opts = [];
 }
 exports.Problem = Problem;
 
@@ -53,9 +55,12 @@ Problem.prototype = {
       this.to_dimacs(function(data) { s += data });
       return s;
    },
-   solve: function(onSolved, /*opt*/ solver_cmd, solver_opts) {
-      solver_cmd = solver_cmd || DEFAULT_SOLVER;
-      var solver = cld.spawn(solver_cmd, solver_opts);
+   verbosely: function() {
+      this.solver_opts.push("-v");
+      return this;
+   }
+   solve: function(on_solved, this_arg) {
+      var solver = cld.spawn(this.solver_cmd, this.solver_opts);
       solver.stderr.on('data', function(data) {
          data.split("\n").forEach(function(line) {
             if (line.length)
@@ -84,18 +89,18 @@ Problem.prototype = {
       solver.on('exit', function(code, signal) {
          if (signal) {
             console.log(solver_cmd + " exited on signal " + signal);
-            onSolved(undefined);
+            on_solved.call(this_arg, undefined);
          } else if (typeof satp !== 'boolean') {
             console.log(solver_cmd + " did not decide!");
-            onSolved(undefined);
+            on_solved.call(this_arg, undefined);
          } else if (!satp) {
-            onSolved(null);
+            on_solved.call(this_arg, null);
          } else if (atoms[atoms.length - 1] !== 0) {
             console.log(solver_cmd + " did not finish writing assignments!");
-            onSolved(undefined);
+            on_solved.call(this_arg, undefined);
          } else {
             atoms.pop();
-            onSolved(new Solution(atoms));
+            on_solved.call(this_arg, new Solution(atoms));
          }
       });
       this.to_dimacs(function(data) { solver.stdin.write(data) });

@@ -36,7 +36,7 @@ Board.prototype = {
       this.prob.implies([], this.vars[row * 81 + col * 9 + num]);
    },
    solve: function(on_soln, on_none) {
-      this.prob.solve((function(raw_soln) {
+      this.prob.solve(function(raw_soln) {
          if (!raw_soln) {
             if (on_none)
                on_none();
@@ -52,7 +52,7 @@ Board.prototype = {
          }
          this.prob.not_that_one(raw_soln);
          on_soln(soln)
-      }).bind(this));
+      }, this);
    }
 }
 
