@@ -1,4 +1,4 @@
-// -*- Mode: javascript; indent-tabs-mode: nil; js-indent-level: 3 -*-
+// -*- mode: javascript; indent-tabs-mode: nil; js-indent-level: 3 -*-
 "use strict";
 var cld = require("child_process");
 var DEFAULT_SOLVER = "picosat";
@@ -185,4 +185,4 @@ Solution.prototype = {
    mapget: function(indices) {
       return indices.map(function(index) { return this.get(index) }, this);
    },
-};
+}
