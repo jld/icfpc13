@@ -104,7 +104,9 @@ Problem.prototype = {
             on_solved.call(this_arg, new Solution(atoms));
          }
       });
-      this.to_dimacs(function(data) { solver.stdin.write(data) });
+      // FIXME: this is slow
+      // this.to_dimacs(function(data) { solver.stdin.write(data) });
+      solver.stdin.write(this.to_dimacs_str());
       solver.stdin.end();
    },
    ////
