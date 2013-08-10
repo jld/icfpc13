@@ -64,16 +64,17 @@ Problem.prototype = {
       });
       var satp;
       var atoms = [];
+      var leftovers = "";
       solver.stdout.on('data', function(data) {
-         data.toString().split("\n").forEach(function(line) {
+         var lines = (leftovers + data.toString()).split("\n");
+         leftovers = lines.pop();
+         lines.forEach(function(line) {
             switch (line[0]) {
             case 's':
                satp = line.slice(2) == "SATISFIABLE";
                break;
             case 'v':
                line.slice(2).split(" ").map(Number).forEach(function(atom) { atoms.push(atom) });
-               break;
-            case undefined:
                break;
             default:
                console.log(solver_cmd + ": " + line);
