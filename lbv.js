@@ -190,6 +190,10 @@ Program.prototype = {
             on_ready.call(this_arg, this);
       }, this);
    },
+   verbosely: function() {
+      this.prob.verbosely();
+      return this;
+   },
 }
 
 
