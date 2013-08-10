@@ -30,18 +30,34 @@ function mk_word(f, this_arg) {
    iota(word, f, this_arg);
 }
 
+
 function ALU(p, x) {
+   this.prob = p;
    var op = this.op = p.mk_vars(5);
-   this.input = iota(3, function() { p.mk_vars(word) });
    this.inenb = [p.mk_or([op[3], op[4]]),
                  op[4],
                  p.mk_and([op[2], op[4]])];
+}
+exports.ALU = ALU; // for "unit testing"
+
+ALU.prototype = {
+   data: function() {
+      return new ALUdata(this);
+   }
+}
+
+
+function ALUdata(ctl) {
+   var p = ctl.prob;
+   var op = ctl.op
+   this.ctl = ctl;
+   this.input = iota(3, function() { p.mk_vars(word) });
 
    var zero = mk_word(function() { return p.mk_false() });
    for (var i = 0; i < 3; ++i)
-      p.eqn_if(-this.inenb[i], this.input[i], zero);
+      p.eqn_if(-ctl.inenb[i], this.input[i], zero);
 
-   var tconst = mk_word(function(i) { return i == 0 ? this.op[0] : p.mk_false() }, this);
+   var tconst = mk_word(function(i) { return i == 0 ? op[0] : p.mk_false() }, this);
    var tnot = this.input[0].map(function(a) { return -a });
    var tshl1 = p.mk_shift(this.input[0], 1);
    var tshr1 = p.mk_shift(this.input[0], -1);
@@ -73,17 +89,13 @@ function ALU(p, x) {
    var m0 = p.mk_muxn(op[3], m00, m01);
    this.output = p.mk_muxn(op[4], m0, m10);
 }
-exports.ALU = ALU; // for "unit testing"
-
-ALU.prototype = {
-}
 
 
 function Program(p, size) {
    this.prob = p;
-   this.x = p.mk_vars(word);
    this.alus = iota(size, function() { return new ALU(p, this.x) }, this);
-   this.out = alus[0].out;
+   this.constraints = [];
+
    function zeroes() {
       return iota(size, function() { iota(size, function() { return p.mk_false }) });
    }
@@ -97,14 +109,13 @@ function Program(p, size) {
    for (var i = 0; i < size; ++i) {
       // Special case: in0 is the next one or not at all.
       if (i < size - 1)
-         this.inroute[0][i][i+1] = p.mk_var();
+         ctl.inroute[0][i][i+1] = p.mk_var();
       for (var j = i + 2; j < size; ++j)
          for (var k = 1; k < 3; ++k)
-            if (j > i + k) {
-               var r = this.inroute[k][i][j] = p.mk_var();
-               p.eqn_if(r, this.alus[i].input[k], this.alus[j].output);
-            }
+            if (j > i + k)
+               this.inroute[k][i][j] = p.mk_var();
    }
+
    // Output must go somewhere:
    for (var i = 0; i < size; ++i) {
       var outbound = [];
@@ -146,12 +157,14 @@ function Program(p, size) {
    // And this *should* completely determine the routing matrices given the inenbs.
    // No proof of this claim is herein attempted.
 }
+exports.Program = Program;
 
 Program.prototype = {
    constrain: function(input, output) {
-      inat = mk_word(function(i) { return input[i] ? this.x[i] : -this.x[i] }, this);
-      for (i = 0; i < word; ++i)
-         this.prob.implies(inat, output[i] ? this.out[i] : -this.out[i]);
+      var cons = new ProgramData(this);
+      this.prob.setn(cons.x, input);
+      this.prob.setn(cons.out, output);
+      this.contraints.push(cons);
    },
    solve: function(on_ready, this_arg) {
       this.prob.solve(function(soln) {
@@ -161,3 +174,19 @@ Program.prototype = {
    },
 }
 
+
+function ProgramData(ctl) {
+   this.ctl = ctl;
+   var p = ctl.prob;
+   this.x = p.mk_vars(word);
+   this.out = alus[0].out;
+   this.alus = ctl.alus.map(function(alu) { return alu.data() });
+
+   for (var i = 0; i < size; ++i)
+      for (var j = i + 1; j < size; ++j)
+         for (var k = 0; k < 3; ++k)
+            p.eqn_if(ctl.inroute[k][i][j], this.alus[i].input[k], this.alus[j].output);
+}
+
+ProgramData.prototype = {
+}

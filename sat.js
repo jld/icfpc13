@@ -231,6 +231,14 @@ Problem.prototype = {
          out[i] = this.mk_xor(ins.map(function(x) { return x[i] }));
       return out;
    },
+   set: function(atom, bool) {
+      this.clause([bool ? atom : -atom]);
+   },
+   setn: function(atoms, bools) {
+      atoms.map(function(atom, i) {
+         this.set(atom, bools[i]);
+      }, this);
+   },
 }
 
 
