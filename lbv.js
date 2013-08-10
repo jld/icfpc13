@@ -30,6 +30,18 @@ function mk_word(f, this_arg) {
    return iota(word, f, this_arg);
 }
 
+function from_hex(s) {
+   if (s.match(/^0x/))
+      s = s.slice(2);
+   var a = mk_word(function () { return false });
+   for (var i = 0, j = s.length - 1; j >= 0 && i < word; i+=4, --j) {
+      var x = parseInt(s[j], 16);
+      for (k = 0; k < 4; ++k)
+         if (x & (1 << k))
+            a[i + k] = true;
+   }
+   return a;
+}
 
 
 function ALU(p) {
@@ -168,10 +180,14 @@ Program.prototype = {
       this.prob.setn(cons.x, input);
       this.prob.setn(cons.output, output);
    },
+   constrain_hex: function(inhex, outhex) {
+      this.constrain(from_hex(inhex), from_hex(outhex));
+   },
    solve: function(on_ready, this_arg) {
       this.prob.solve(function(soln) {
          this.soln = soln;
-         on_ready.call(this_arg, this);
+         if (on_ready)
+            on_ready.call(this_arg, this);
       }, this);
    },
 }
