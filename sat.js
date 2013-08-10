@@ -138,13 +138,13 @@ Problem.prototype = {
    },
    parity: function(atoms, /*opt*/ parity) {
       parity = parity ? 1 : 0;
-      var n = atoms.length, nn = 1 << n;
+      var n = atoms.length, nn = 1 << n, row = Array(n);
       for (var i = 0; i < nn; ++i) {
          // This could probably be optimized.  It probably doesn't matter.
-         var popcount = 0, row = [];
+         var popcount = 0;
          for (var j = 0; j < n; ++j) {
             popcount += (i >> j) & 1;
-            row.push((i >> j) & 1 ? atoms[j] : -atoms[j]);
+            row[j] = (i >> j) & 1 ? atoms[j] : -atoms[j];
          }
          if ((popcount & 1) != parity)
             this.implies(row, []);
@@ -165,8 +165,66 @@ Problem.prototype = {
       this.eq_if(ctl, input1, output);
       return output;
    },
+   mk_adder: function(a, b, c) {
+      var lo = this.mk_xor([a, b, c]);
+      var hi = this.mk_or([this.mk_and([a, b]),
+                           this.mk_and([b, c]),
+                           this.mk_and([c, a])]);
+      return [lo, hi];
+   },
+   ////
    not_that_one: function(soln) {
       this.implies(soln.assigned, []);
+   },
+   mk_ripplecarry: function(as, bs) {
+      var carry = this.mk_false();
+      var out = Array(Math.min(as.length, bs.length));
+      for (var i = 0; i < out.length; ++i) {
+         var sum = this.mk_adder(as[i], bs[i], carry);
+         out[i] = sum[0];
+         carry = sum[1];
+      }
+      return out;
+   },
+   mk_shift: function(xs, n) {
+      var out = Array(xs.length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = xs[i - n] || this.mk_false();
+      return out;
+   },
+   eqn_if: function(ctl, as, bs) {
+      for (var i = 0; i < as.length; ++i)
+         this.eq_if(ctl, as[i], bs[i]);
+   },
+   mk_muxn: function(ctl, in0, in1) {
+      var out = Array(in0.length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = this.mk_mux(ctl, in0[i], in1[i]);
+      return out;
+   },
+   mk_muxnn: function(ctls, in0, in1) {
+      var out = Array(ctls.length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = this.mk_mux(ctls[i], in0[i], in1[i]);
+      return out;
+   },
+   mk_andn: function(ins) {
+      var out = Array(ins[0].length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = this.mk_and(ins.map(function(x) { return x[i] }));
+      return out;
+   },
+   mk_orn: function(ins) {
+      var out = Array(ins[0].length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = this.mk_or(ins.map(function(x) { return x[i] }));
+      return out;
+   },
+   mk_xorn: function(ins) {
+      var out = Array(ins[0].length);
+      for (var i = 0; i < out.length; ++i)
+         out[i] = this.mk_xor(ins.map(function(x) { return x[i] }));
+      return out;
    },
 }
 
@@ -185,5 +243,19 @@ Solution.prototype = {
    },
    mapget: function(indices) {
       return indices.map(function(index) { return this.get(index) }, this);
+   },
+   getint: function(indices) {
+      // BEWARE FLOATING POINT
+      var n = 0;
+      for (var i = 0; i < indices.length; ++i)
+         if (this.get(indices[i]))
+            n |= 1 << i;
+      return n;
+   },
+   gethex: function(indices) {
+      var s = "";
+      for (var i = 0; i < indices.length; i += 4)
+         s = this.getint(indices.slice(i, i + 4)).toString(16) + s;
+      return s;
    },
 }
