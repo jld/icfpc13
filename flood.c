@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -160,8 +161,8 @@ restrict_ops(const char *stuff)
 enum {
 	MAXNODE = 30,
 	MAXCASE = 16,
-	HASHCASE = MAXCASE,
 };
+static size_t numcase;
 
 struct prog {
 	uint8_t len;
@@ -175,7 +176,7 @@ prog_hash(const struct prog *prog) {
 	u64 hash = 0;
 	int i;
 
-	for (i = 0; i < HASHCASE; ++i) {
+	for (i = 0; i < numcase; ++i) {
 		hash ^= prog->out[i];
 		hash += (hash >> 43) | (hash << 21);
 		hash ^= (hash >> 13) | (hash << 51);
@@ -240,18 +241,9 @@ make_known(struct prog *prog) {
 		++num[prog->len];
 		return;
 	}
-	if (memcmp(&prog->out, &table_prog(old)->out, HASHCASE * 8) != 0) {
+	if (memcmp(&prog->out, &table_prog(old)->out, numcase * sizeof(u64)) != 0) {
 		fprintf(stderr, "THE BEES COME DOWN! %p %p\n", prog, table_prog(old));
 		abort();
-	}
-	if (memcmp(&prog->out, &table_prog(old)->out, MAXCASE * 8) != 0) {
-#if 0
-		fputs("Collision: ", stderr);
-		prog_fprint(table_prog(old), stderr);
-		fputs(" != ", stderr);
-		prog_fprint(prog, stderr);
-		fputs("\n", stderr);
-#endif
 	}
 	free(prog);
 }
@@ -398,31 +390,51 @@ static void cases_upto(int limit) {
 
 //
 
-#include <unistd.h>
-#include <fcntl.h>
+static void
+xs_randomly(void)
+{
+	FILE *rnd;
+
+	rnd = fopen("/dev/urandom", "rb");
+	setbuf(rnd, NULL);
+	fread(&xs, sizeof(xs), 1, rnd);
+	fclose(rnd);
+	numcase = MAXCASE;
+}
+
+static void
+xs_from_string(const char *s)
+{
+	int i, n;
+
+	for (i = 0; i < MAXCASE; ++i) {
+		if (sscanf(s, "%"SCNx64"%n", &xs[i], &n) < 1)
+			break;
+		s += n;
+		if (*s == ',')
+			++s;
+	}
+	numcase = i;
+}
 
 int
 main(int argc, char **argv)
 {
-	int fd, upto = 10;
-	char *rp;
-	size_t s;
-	ssize_t r;
+	int upto = 10;
 
 	if (argc > 1)
 		upto = atoi(argv[1]);
 	assert(upto <= MAXNODE);
 
-	if (argc > 2)
+	if (argc > 2 && isalnum(argv[2][0]))
 		restrict_ops(argv[2]);
 
-	fd = open("/dev/urandom", O_RDONLY);
-	for (rp = (char*)&xs, s = sizeof(xs); s > 0; rp += r, s -= r) {
-		r = read(fd, rp, s);
-		if (r <= 0)
-			abort();
-	}
-//	for (i = 0; i < HASHCASE; ++i)
+	if (argc > 3)
+		xs_from_string(argv[3]);
+	else
+		xs_randomly();
+
+//	for (i = 0; i < numcase; ++i)
 //		fprintf(stderr, "x = 0x%016"PRIx64"\n", xs[i]);
 
 	cases_upto(upto);
