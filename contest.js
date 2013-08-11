@@ -38,7 +38,15 @@ function post(endpoint, json, callback, this_arg) {
       var acc = "";
       res.setEncoding('utf8');
       res.on('data', function(chunk) { acc += chunk });
-      res.on('end', function() { callback.call(this_arg, JSON.parse(acc)) });
+      res.on('end', function() {
+	 if (res.statusCode != 200) {
+	    console.log(endpoint + ": HTTP ERROR " + res.statusCode + ": " + acc);
+	    if (res.statusCode == 429)
+	       post(endpoint, json, callback, this_arg);
+	    return;
+	 }
+	 callback.call(this_arg, JSON.parse(acc))
+      });
    });
    req.on('error', function (e) {
       console.log("Failed to call " + endpoint + ": " + e.message);
@@ -52,7 +60,7 @@ exports.get_nextreq = function() { return nextreq };
 function sync() {
    post("/myproblems", null, function(p) {
       problems = p;
-      fs.writeFileSync("private/myproblems.json", 
+      fs.writeFileSync("private/myproblems.json",
 		       JSON.stringify(problems).replace(/},/g, "},\n"));
    });
 }
