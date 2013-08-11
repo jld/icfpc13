@@ -110,6 +110,18 @@ table_find_or_add(table *tab, u64 hash, struct prog *prog)
 	return NULL;
 }
 
+static void
+table_zap(table *tab)
+{
+	table_iter i;
+
+	for (table_iter_for(i, *tab))
+		if (i.here->prog)
+			free(i.here->prog);
+	free(tab->cells);
+	tab->avail = tab->used = 0;
+}
+
 //
 
 typedef enum insn {
@@ -390,7 +402,7 @@ make_known(struct prog *prog) {
 		mem_used += 48 + MAXNODE + (prog_fullp(prog) ? numcase : 0) * sizeof(u64);
 		if (mem_used > mem_limit) {
 			fprintf(stderr, "(memory limit reached) ");
-			// TODO: retroactively zap this level
+			table_zap(&all[prog->len]);
 			goal_final = 1;
 		}
 		return;
