@@ -236,12 +236,24 @@ prog_fprint(const struct prog *prog, FILE *out) {
 static table all[MAXNODE];
 static unsigned long num[MAXNODE];
 static u64 xs[MAXCASE];
+static u64 goal;
+static int goal_mode, goal_final;
 
 static void
 make_known(struct prog *prog) {
 	const table_cell *old;
+	u64 hash = prog_hash(prog);
 
-	old = table_find_or_add(&all[prog->len], prog_hash(prog), prog);
+	if (goal_mode && hash == goal) {
+		// Victory!
+		prog_fprint(prog, stdout);
+		fputs("\n", stdout);
+		exit(0);
+	}
+	if (goal_final)
+		return;
+
+	old = table_find_or_add(&all[prog->len], hash, prog);
 	if (!old) {
 		++num[prog->len];
 		return;
@@ -406,19 +418,24 @@ xs_randomly(void)
 	fclose(rnd);
 }
 
-static void
-xs_from_string(const char *s)
-{
+static int
+parse_u64s(const char *s, u64 *us, int max) {
 	int i, n;
 
-	for (i = 0; i < MAXCASE; ++i) {
-		if (sscanf(s, "%"SCNx64"%n", &xs[i], &n) < 1)
+	for (i = 0; i < max; ++i) {
+		if (sscanf(s, "%"SCNx64"%n", &us[i], &n) < 1)
 			break;
 		s += n;
 		if (*s == ',')
 			++s;
 	}
-	numcase = i;
+	return i;
+}
+
+static void
+xs_from_string(const char *s)
+{
+	numcase = parse_u64s(s, xs, MAXCASE);
 }
 
 int
@@ -441,6 +458,22 @@ main(int argc, char **argv)
 //	for (i = 0; i < numcase; ++i)
 //		fprintf(stderr, "x = 0x%016"PRIx64"\n", xs[i]);
 
+	if (argc > 4) {
+		numcase = MAXCASE;
+		struct prog *fake = prog_alloc();
+
+		upto--;
+		goal_mode = 1;
+		numcase = parse_u64s(argv[4], fake->out, MAXCASE);
+		goal = prog_hash(fake);
+		free(fake);
+	}
+
 	cases_upto(upto);
+	if (goal_mode) {
+		goal_final = 1;
+		all_cases(upto + 1);
+		return 1;
+	}
 	return 0;
 }
