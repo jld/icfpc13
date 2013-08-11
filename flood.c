@@ -376,10 +376,11 @@ static void ternary_cases(int len) {
 						memcpy(&prog->nodes[1 + in0->len],
 						    &in1->nodes[0], in1->len);
 						memcpy(&prog->nodes[1 + in0->len + in1->len],
-						    &in1->nodes[0], in2->len);
+						    &in2->nodes[0], in2->len);
 						for (i = 0; i < numcase; ++i)
-							prog->out[i] = (~in0->out[i] & in1->out[i])
-							    | (in0->out[i] & in2->out[i]);
+							prog->out[i] =
+							    in0->out[i] ? in2->out[i] : in1->out[i];
+						make_known(prog);
 					}
 				}
 		}

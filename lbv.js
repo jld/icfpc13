@@ -80,7 +80,7 @@ function ALUdata(ctl, x) {
    var tor = p.mk_orn([this.input[0], this.input[1]]);
    var txor = p.mk_xorn([this.input[0], this.input[1]]);
    var tplus = p.mk_ripplecarry(this.input[0], this.input[1]);
-   var tif0 = p.mk_muxnn(this.input[0], this.input[1], this.input[2]);
+   var tif0 = p.mk_muxn(p.mk_or(this.input[0]), this.input[1], this.input[2]);
 
    p.implies([-op[4], -op[3], -op[2], op[1]], []);
    p.implies([op[2], op[1]], []);
