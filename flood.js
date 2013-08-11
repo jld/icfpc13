@@ -3,7 +3,7 @@ var cld = require("child_process");
 var fs = require("fs");
 var cont = require("./contest");
 
-var memlimit = 3 * 1024 * 1024 * 1024;
+var memlimit = 6 * 1024 * 1024 * 1024;
 exports.set_memlimit = function (l) { memlimit = l };
 var timelimit = 100;
 exports.set_timelimit = function (l) { timelimit = l };
