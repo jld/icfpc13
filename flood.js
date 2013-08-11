@@ -3,6 +3,11 @@ var cld = require("child_process");
 var fs = require("fs");
 var cont = require("./contest");
 
+var memlimit = 3 * 1024 * 1024 * 1024;
+exports.set_memlimit = function (l) { memlimit = l };
+var timelimit = 100;
+exports.set_timelimit = function (l) { timelimit = l };
+
 function robot(prob, xs, outs, callback) {
    var args = [prob.size - 1 + "",
 	       prob.operators.join(","),
@@ -13,7 +18,9 @@ function robot(prob, xs, outs, callback) {
    // Note to self: ditch the stderr when parallelizing.
    var cmd = folding ? "./foldflood" : "./flood";
    console.log("+ " + cmd + " " + args.join(" "));
-   var fl = cld.spawn(cmd, args);
+   var fl = cld.spawn(cmd, args,
+		      { env: { FLOOD_MEMLIMIT: ""+memlimit,
+			       FLOOD_TIMELIMIT : ""+timelimit } });
    fl.stderr.on('data', function(data) { process.stderr.write(data) });
    var acc = "";
    fl.stdout.on('data', function(data) { acc += data.toString() });

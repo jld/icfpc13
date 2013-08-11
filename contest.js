@@ -93,7 +93,8 @@ function solve(xs, robot, prob, scallback) {
 	    post("/guess", {id: id, program: soln}, function(s) {
 	       if (s.status == "win") {
 		  console.log(id + ": Yay!  We won!");
-		  scallback(true);
+		  if (scallback)
+		     scallback(true);
 	       } else if (s.status == "mismatch") {
 		  var new_x = s.values[0], new_out = s.values[1], wrong = s.values[2];
 		  console.log(id + ": " + new_x + " -> " + new_out + " (not " + wrong + ")");

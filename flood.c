@@ -682,7 +682,7 @@ main(int argc, char **argv)
 	}
 
 	cases_upto(upto);
-	if (goal_mode) {
+	if (goal_mode && !goal_final) {
 		goal_final = 1;
 		all_cases(upto + 1);
 		return 1;
