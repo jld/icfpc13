@@ -63,7 +63,8 @@ function seqsolve(thesize) {
    var probs = [];
    cont.get_problems().forEach(function(prob) {
       if (prob.size == thesize &&
-	  (!prob.solved || prob.timeLeft) &&
+	  !prob.solved &&
+	  prob.timeLeft !== 0 &&
 	  prob.operators.every(function(s) { return !s.match(/fold/) }))
 	 probs.push(prob);
    });
