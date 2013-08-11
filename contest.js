@@ -18,6 +18,7 @@ try {
 } catch (exn) {
    problems = []
 }
+exports.get_problems = function() { return problems };
 
 var nextreq = 0;
 function post(endpoint, json, callback, this_arg) {
@@ -78,6 +79,7 @@ function solve(xs, robot, prob) {
 	       console.log(id + ": no solution; ABANDONING PROBLEM, DANGER, BEES, etc.");
 	       return;
 	    }
+	    console.log(id + ": trying " + soln);
 	    post("/guess", {id: id, program: soln}, function(s) {
 	       if (s.status == "win") {
 		  console.log(id + ": Yay!  We won!");
