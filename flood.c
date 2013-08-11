@@ -355,6 +355,8 @@ static unsigned long num[MAXNODE];
 static u64 goal;
 static int goal_mode, goal_final;
 static int inner_limit = MAXNODE;
+static u64 mem_limit = ~(u64)0;
+static u64 mem_used = 0;
 
 static int
 discardable(int len, int fop)
@@ -385,6 +387,12 @@ make_known(struct prog *prog) {
 	old = table_find_or_add(&all[prog->len], hash, prog);
 	if (!old) {
 		++num[prog->len];
+		mem_used += 48 + MAXNODE + (prog_fullp(prog) ? numcase : 0) * sizeof(u64);
+		if (mem_used > mem_limit) {
+			fprintf(stderr, "(memory limit reached) ");
+			// TODO: retroactively zap this level
+			goal_final = 1;
+		}
 		return;
 	}
 	if (memcmp(&prog->out, &table_prog(old)->out, numcase * sizeof(u64)) != 0) {
@@ -581,7 +589,7 @@ static void all_cases(int len) {
 static void cases_upto(int limit) {
 	int i;
 
-	for (i = 1; i <= limit; ++i) {
+	for (i = 1; i <= limit && !goal_final; ++i) {
 		fprintf(stderr, "Computing cases of length %d: ", i);
 		all_cases(i);
 		fprintf(stderr, "%lu\n", num[i]);
@@ -624,7 +632,11 @@ xs_from_string(const char *s)
 int
 main(int argc, char **argv)
 {
+	const char *s;
 	int upto = 10;
+
+	if ((s = getenv("FLOOD_MEMLIMIT")))
+		mem_limit = strtoul(s, NULL, 0);
 
 	if (argc > 1)
 		upto = atoi(argv[1]);
