@@ -348,6 +348,14 @@ static table all[MAXNODE];
 static unsigned long num[MAXNODE];
 static u64 goal;
 static int goal_mode, goal_final;
+static int inner_limit = MAXNODE;
+
+static int
+discardable(int len, int fop)
+{
+	return fop == FO_INNER && len > inner_limit;
+}
+
 
 static void
 make_known(struct prog *prog) {
@@ -407,12 +415,12 @@ unary_cases(int len) {
 	table_iter t0;
 	const struct prog *in0;
 	struct prog *prog;
-	int i;
+	int i, fop;
 
 #define unary_case(node, sfx) do {				\
 	if (restricted & (1 << node))				\
 		break;						\
-	prog = prog_alloc(in0->folded);				\
+	prog = prog_alloc(fop);					\
 	prog->len = len;					\
 	prog->nodes[0] = node;					\
 	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len); 	\
@@ -424,6 +432,9 @@ unary_cases(int len) {
 
 	for (table_iter_for(t0, all[len - 1])) {
 		in0 = table_prog(t0.here);
+		fop = in0->folded;
+		if (discardable(len, fop))
+			continue;
 		unary_case(I_SHL1, << 1);
 		unary_case(I_SHR1, >> 1);
 		unary_case(I_SHR4, >> 4);
@@ -461,6 +472,8 @@ binary_cases(int len) {
 				in1 = table_prog(t1.here);
 				fop = in0->folded | in1->folded;
 				if (fop == FO_WRONG)
+					continue;
+				if (discardable(len, fop))
 					continue;
 				// Commutativity.  (See also the bound on leftlen.)
 				if (leftlen == len - 1 - leftlen)
@@ -508,6 +521,8 @@ static void ternary_cases(int len) {
 						in2 = table_prog(t2.here);
 						fop = in0->folded | in1->folded | in2->folded;
 						if (fop == FO_WRONG)
+							continue;
+						if (discardable(len, fop))
 							continue;
 						ternary_preamble(I_IF0);
 						if (prog_fullp(prog))
@@ -614,7 +629,8 @@ main(int argc, char **argv)
 		numcase = MAXCASE;
 		struct prog *fake = prog_alloc(0);
 
-		upto--;
+		inner_limit = upto - 4;
+		upto = upto - 1;
 		goal_mode = 1;
 		numcase = parse_u64s(argv[4], fake->out, MAXCASE);
 		goal = prog_hash(fake);
