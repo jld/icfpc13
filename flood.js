@@ -70,26 +70,35 @@ function solve(prob, callback) {
 exports.solve = solve;
 
 // This also doesn't really belong here.
-function seqsolve(thesize, oplimit, foldable) {
+function allsolve(opts) {
+   var maxpar = opts.par || 1;
    var probs = [];
    cont.get_problems().forEach(function(prob) {
-      if (prob.size == thesize &&
+      if ((!opts.size || prob.size <= opts.size) &&
 	  !prob.solved &&
 	  prob.timeLeft !== 0 &&
-	  (foldable || prob.operators.every(function(s) { return !s.match(/fold/) })) &&
-	  (!oplimit || prob.operators.length <= oplimit))
+	  (opts.fold || prob.operators.every(function(s) { return !s.match(/fold/) })) &&
+	  (!opts.ops || prob.operators.length <= opts.ops))
 	 probs.push(prob);
    });
+   var par = 0;
    var i = 0;
    function do_one() {
-      if (i >= probs.length) {
-	 console.log("DING DING DING");
-	 return;
+      while (par < maxpar) {
+	 if (i >= probs.length) {
+	    if (par == 0)
+	       console.log("DING DING DING");
+	    return;
+	 }
+	 par++;
+	 var prob = probs[i++];
+	 console.log("Doing: " + JSON.stringify(prob));
+	 solve(prob, function() {
+	    par--;
+	    do_one();
+	 });
       }
-      var prob = probs[i++];
-      console.log("Doing: " + JSON.stringify(prob));
-      solve(prob, do_one);
    }
    do_one();
 }
-exports.seqsolve = seqsolve;
+exports.allsolve = allsolve;
