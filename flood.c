@@ -160,15 +160,20 @@ restrict_ops(const char *stuff)
 
 enum {
 	MAXNODE = 30,
-	MAXCASE = 16,
+	MAXCASE = 512,
 };
-static size_t numcase;
+static size_t numcase = 16;
 
 struct prog {
 	uint8_t len;
 	uint8_t nodes[MAXNODE];
-	u64 out[MAXCASE];
+	u64 out[0];
 };
+
+static struct prog *
+prog_alloc(void) {
+	return malloc(sizeof(struct prog) + numcase * sizeof(u64));
+}
 
 static u64
 prog_hash(const struct prog *prog) {
@@ -256,10 +261,10 @@ base_cases(void) {
 #define base_case(node, init) do {	\
 	if (restricted & (1 << node))	\
 		break;			\
-	prog = malloc(sizeof *prog);	\
+	prog = prog_alloc();		\
 	prog->len = 1;			\
 	prog->nodes[0] = node;		\
-	for (i = 0; i < MAXCASE; ++i)	\
+	for (i = 0; i < numcase; ++i)	\
 		prog->out[i] = init;	\
 	make_known(prog);		\
 } while(0)
@@ -279,11 +284,11 @@ unary_cases(int len) {
 #define unary_case(node, sfx) do {				\
 	if (restricted & (1 << node))				\
 		break;						\
-	prog = malloc(sizeof *prog);				\
+	prog = prog_alloc();					\
 	prog->len = len;					\
 	prog->nodes[0] = node;					\
 	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len); 	\
-	for (i = 0; i < MAXCASE; ++i)				\
+	for (i = 0; i < numcase; ++i)				\
 		prog->out[i] = in0->out[i] sfx;			\
 	make_known(prog);					\
 } while(0)
@@ -308,13 +313,13 @@ binary_cases(int len) {
 #define binary_case(node, infix) do {					\
 	if (restricted & (1 << node))					\
 		break;							\
-	prog = malloc(sizeof *prog);					\
+	prog = prog_alloc();						\
 	prog->len = len;						\
 	prog->nodes[0] = node;						\
 	assert(1 + in0->len + in1->len == len);				\
 	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len);		\
 	memcpy(&prog->nodes[1 + in0->len], &in1->nodes[0], in1->len);	\
-	for (i = 0; i < MAXCASE; ++i)					\
+	for (i = 0; i < numcase; ++i)					\
 		prog->out[i] = in0->out[i] infix in1->out[i];		\
 	make_known(prog);						\
 } while(0);
@@ -349,7 +354,7 @@ static void ternary_cases(int len) {
 					in1 = table_prog(t1.here);
 					for (table_iter_for(t2, all[len - 1 - len0 - len1])) {
 						in2 = table_prog(t2.here);
-						prog = malloc(sizeof *prog);
+						prog = prog_alloc();
 						prog->len = len;
 						prog->nodes[0] = I_IF0;
 						assert(1 + in0->len + in1->len + in2->len == len);
@@ -359,7 +364,7 @@ static void ternary_cases(int len) {
 						    &in1->nodes[0], in1->len);
 						memcpy(&prog->nodes[1 + in0->len + in1->len],
 						    &in1->nodes[0], in2->len);
-						for (i = 0; i < MAXCASE; ++i)
+						for (i = 0; i < numcase; ++i)
 							prog->out[i] = (~in0->out[i] & in1->out[i])
 							    | (in0->out[i] & in2->out[i]);
 					}
@@ -397,9 +402,8 @@ xs_randomly(void)
 
 	rnd = fopen("/dev/urandom", "rb");
 	setbuf(rnd, NULL);
-	fread(&xs, sizeof(xs), 1, rnd);
+	fread(&xs, numcase * sizeof(u64), 1, rnd);
 	fclose(rnd);
-	numcase = MAXCASE;
 }
 
 static void
@@ -432,7 +436,7 @@ main(int argc, char **argv)
 	if (argc > 3)
 		xs_from_string(argv[3]);
 	else
-		xs_randomly();
+		xs_randomly(); // TODO: allow altering numcase here
 
 //	for (i = 0; i < numcase; ++i)
 //		fprintf(stderr, "x = 0x%016"PRIx64"\n", xs[i]);
