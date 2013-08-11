@@ -8,12 +8,12 @@
 //
 
 typedef uint64_t u64;
-typedef struct node *tree;
+typedef struct node *table;
 
 struct node {
 	u64 bit;
 	union {
-		tree next[2];
+		table next[2];
 		struct {
 			u64 hash;
 			struct prog *prog;
@@ -21,78 +21,78 @@ struct node {
 	} body;
 };
 
-#define tree_isleaf(t) ((t)->bit == 0)
-#define tree_ispair(t) (!tree_isleaf(t))
-#define tree_hash(t) (assert(tree_isleaf(t)), (t)->body.leaf.hash)
-#define tree_prog(t) (assert(tree_isleaf(t)), (t)->body.leaf.prog)
-#define tree_left(t) (assert(tree_ispair(t)), (t)->body.next[0])
-#define tree_right(t) (assert(tree_ispair(t)), (t)->body.next[1])
+#define table_isleaf(t) ((t)->bit == 0)
+#define table_ispair(t) (!table_isleaf(t))
+#define table_hash(t) (assert(table_isleaf(t)), (t)->body.leaf.hash)
+#define table_prog(t) (assert(table_isleaf(t)), (t)->body.leaf.prog)
+#define table_left(t) (assert(table_ispair(t)), (t)->body.next[0])
+#define table_right(t) (assert(table_ispair(t)), (t)->body.next[1])
 
-typedef struct tree_iter {
-	tree here;
+typedef struct table_iter {
+	table here;
 	int sp;
-	tree stack[64];
-} tree_iter;
+	table stack[64];
+} table_iter;
 
 static void
-tree_iter__toleaf(tree_iter *iter)
+table_iter__toleaf(table_iter *iter)
 {
 	if (!iter->here)
 		return;
-	while (tree_ispair(iter->here)) {
+	while (table_ispair(iter->here)) {
 		assert(iter->sp < 64);
-		iter->stack[iter->sp++] = tree_right(iter->here);
-		iter->here = tree_left(iter->here);
+		iter->stack[iter->sp++] = table_right(iter->here);
+		iter->here = table_left(iter->here);
 	}
 }
 
 static void
-tree_iter_start(tree_iter *iter, tree root)
+table_iter_start(table_iter *iter, table root)
 {
 	iter->here = root;
 	iter->sp = 0;
-	tree_iter__toleaf(iter);
+	table_iter__toleaf(iter);
 }
 
 static void
-tree_iter_next(tree_iter *iter)
+table_iter_next(table_iter *iter)
 {
 	assert(iter->here);
 	iter->here = iter->sp ? iter->stack[--iter->sp] : NULL;
-	tree_iter__toleaf(iter);
+	table_iter__toleaf(iter);
 }
 
-#define tree_iter_for(iterl, root) \
-	tree_iter_start(&iterl, root); iterl.here; tree_iter_next(&iterl)
+#define table_iter_for(iterl, root) \
+	table_iter_start(&iterl, root); iterl.here; table_iter_next(&iterl)
 
-static tree*
-tree__findleaf(tree *root, u64 hash)
+static table*
+table__findleaf(table *root, u64 hash)
 {
 	assert(*root);
-	while (tree_ispair(*root))
+	while (table_ispair(*root))
 		root = &(*root)->body.next[!!((*root)->bit & hash)];
 	return root;
 }
 
-static __attribute__((unused)) tree
-tree_find_sloppily(tree root, u64 hash)
+static __attribute__((unused)) table
+table_find_sloppily(table root, u64 hash)
 {
-	return *(tree__findleaf(&root, hash));
+	return *(table__findleaf(&root, hash));
 }
 
-static __attribute__((unused)) tree
-tree_find(tree root, u64 hash)
+static __attribute__((unused)) table
+table_find(table root, u64 hash)
 {
-	tree there;
+	table there;
 
-	there = tree_find_sloppily(root, hash);
-	return tree_hash(there) == hash ? there : NULL;
+	there = table_find_sloppily(root, hash);
+	return table_hash(there) == hash ? there : NULL;
 }
 
-static tree
-tree_find_or_add(tree *root, u64 hash, struct prog *prog)
+static table
+table_find_or_add(table *root, u64 hash, struct prog *prog)
 {
-	tree leaf, pair;
+	table leaf, pair;
 	u64 old, bit;
 
 	leaf = malloc(sizeof(struct node));	
@@ -104,8 +104,8 @@ tree_find_or_add(tree *root, u64 hash, struct prog *prog)
 		*root = leaf;
 		return NULL;
 	}
-	root = tree__findleaf(root, hash);
-	old = tree_hash(*root);
+	root = table__findleaf(root, hash);
+	old = table_hash(*root);
 	if (old == hash) {
 		free(leaf);
 		return *root;
@@ -240,27 +240,27 @@ prog_fprint(const struct prog *prog, FILE *out) {
 
 //
 
-static tree all[MAXNODE];
+static table all[MAXNODE];
 static unsigned long num[MAXNODE];
 static u64 xs[MAXCASE];
 
 static void
 make_known(struct prog *prog) {
-	tree old;
+	table old;
 
-	old = tree_find_or_add(&all[prog->len], prog_hash(prog), prog);
+	old = table_find_or_add(&all[prog->len], prog_hash(prog), prog);
 	if (!old) {
 		++num[prog->len];
 		return;
 	}
-	if (memcmp(&prog->out, &tree_prog(old)->out, HASHCASE * 8) != 0) {
-		fprintf(stderr, "THE BEES COME DOWN! %p %p\n", prog, tree_prog(old));
+	if (memcmp(&prog->out, &table_prog(old)->out, HASHCASE * 8) != 0) {
+		fprintf(stderr, "THE BEES COME DOWN! %p %p\n", prog, table_prog(old));
 		abort();
 	}
-	if (memcmp(&prog->out, &tree_prog(old)->out, MAXCASE * 8) != 0) {
+	if (memcmp(&prog->out, &table_prog(old)->out, MAXCASE * 8) != 0) {
 #if 0
 		fputs("Collision: ", stderr);
-		prog_fprint(tree_prog(old), stderr);
+		prog_fprint(table_prog(old), stderr);
 		fputs(" != ", stderr);
 		prog_fprint(prog, stderr);
 		fputs("\n", stderr);
@@ -292,7 +292,7 @@ base_cases(void) {
 
 static void
 unary_cases(int len) {
-	tree_iter t0;
+	table_iter t0;
 	const struct prog *in0;
 	struct prog *prog;
 	int i;
@@ -309,8 +309,8 @@ unary_cases(int len) {
 	make_known(prog);					\
 } while(0)
 
-	for (tree_iter_for(t0, all[len - 1])) {
-		in0 = tree_prog(t0.here);
+	for (table_iter_for(t0, all[len - 1])) {
+		in0 = table_prog(t0.here);
 		unary_case(I_SHL1, << 1);
 		unary_case(I_SHR1, >> 1);
 		unary_case(I_SHR4, >> 4);
@@ -321,7 +321,7 @@ unary_cases(int len) {
 
 static void
 binary_cases(int len) {
-	tree_iter t0, t1;
+	table_iter t0, t1;
 	const struct prog *in0, *in1;
 	struct prog *prog;
 	int i, leftlen;
@@ -341,10 +341,10 @@ binary_cases(int len) {
 } while(0);
 
 	for (leftlen = 1; leftlen < len - 1; ++leftlen)
-		for (tree_iter_for(t0, all[leftlen])) {
-			in0 = tree_prog(t0.here);
-			for (tree_iter_for(t1, all[len - 1 - leftlen])) {
-				in1 = tree_prog(t1.here);
+		for (table_iter_for(t0, all[leftlen])) {
+			in0 = table_prog(t0.here);
+			for (table_iter_for(t1, all[len - 1 - leftlen])) {
+				in1 = table_prog(t1.here);
 				binary_case(I_AND, &);
 				binary_case(I_OR, |);
 				binary_case(I_XOR, ^);
@@ -354,7 +354,7 @@ binary_cases(int len) {
 }
 
 static void ternary_cases(int len) {
-	tree_iter t0, t1, t2;
+	table_iter t0, t1, t2;
 	const struct prog *in0, *in1, *in2;
 	struct prog *prog;
 	int i, len0, len1;
@@ -363,13 +363,13 @@ static void ternary_cases(int len) {
 		return;
 
 	for (len0 = 1; len0 < len - 2; ++len0)
-		for (tree_iter_for(t0, all[len0])) {
-			in0 = tree_prog(t0.here);
+		for (table_iter_for(t0, all[len0])) {
+			in0 = table_prog(t0.here);
 			for (len1 = 1; len1 < len - 1 - len0; ++len1)
-				for (tree_iter_for(t1, all[len1])) {
-					in1 = tree_prog(t1.here);
-					for (tree_iter_for(t2, all[len - 1 - len0 - len1])) {
-						in2 = tree_prog(t2.here);
+				for (table_iter_for(t1, all[len1])) {
+					in1 = table_prog(t1.here);
+					for (table_iter_for(t2, all[len - 1 - len0 - len1])) {
+						in2 = table_prog(t2.here);
 						prog = malloc(sizeof *prog);
 						prog->len = len;
 						prog->nodes[0] = I_IF0;
