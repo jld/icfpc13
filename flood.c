@@ -485,8 +485,10 @@ static void ternary_cases(int len) {
 	struct prog *prog;
 	int i, len0, len1;
 
+#ifndef FOLDED
 	if (restricted & (1 << I_IF0))
 		return;
+#endif
 
 #define ternary_preamble(fop, node)					\
 	prog = prog_alloc(fop);						\
@@ -503,6 +505,10 @@ static void ternary_cases(int len) {
 			for (len1 = 1; len1 < len - 1 - len0; ++len1)
 				for (table_iter_for(t1, all[len1])) {
 					in1 = table_prog(t1.here);
+#ifdef FOLDED
+					if (restricted & (1 << I_IF0))
+						goto no_if0;
+#endif
 					for (table_iter_for(t2, all[len - 1 - len0 - len1])) {
 						in2 = table_prog(t2.here);
 						ternary_preamble(in0->folded | in1->folded 
@@ -514,6 +520,7 @@ static void ternary_cases(int len) {
 						make_known(prog);
 					}
 #ifdef FOLDED
+			no_if0:
 					if (len - 2 - len0 - len1 < 1)
 						continue;
 					for (table_iter_for(t2, all[len - 2 - len0 - len1])) {
