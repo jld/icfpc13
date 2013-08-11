@@ -245,7 +245,7 @@ make_known(struct prog *prog) {
 	u64 hash = prog_hash(prog);
 
 	if (goal_mode && hash == goal) {
-		// Victory!
+		fputs("Found it!\n", stderr);
 		fputs("(lambda (x) ", stdout);
 		prog_fprint(prog, stdout);
 		fputs(")\n", stdout);
