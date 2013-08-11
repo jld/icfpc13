@@ -8,115 +8,102 @@
 //
 
 typedef uint64_t u64;
-typedef struct node *table;
+typedef struct table {
+	size_t avail, used;
+	struct table_cell *cells;
+} table;
 
-struct node {
-	u64 bit;
-	union {
-		table next[2];
-		struct {
-			u64 hash;
-			struct prog *prog;
-		} leaf;
-	} body;
-};
+typedef struct table_cell {
+	u64 hash;
+	struct prog *prog;
+} table_cell;
+#define table_hash(c) (c->hash)
+#define table_prog(c) (c->prog)
 
-#define table_isleaf(t) ((t)->bit == 0)
-#define table_ispair(t) (!table_isleaf(t))
-#define table_hash(t) (assert(table_isleaf(t)), (t)->body.leaf.hash)
-#define table_prog(t) (assert(table_isleaf(t)), (t)->body.leaf.prog)
-#define table_left(t) (assert(table_ispair(t)), (t)->body.next[0])
-#define table_right(t) (assert(table_ispair(t)), (t)->body.next[1])
+static void
+table_init(table * tab) {
+	tab->used = 0;
+	tab->avail = 17;
+	tab->cells = calloc(tab->avail, sizeof(table_cell));
+}
 
 typedef struct table_iter {
-	table here;
-	int sp;
-	table stack[64];
+	table_cell *here, *end;
 } table_iter;
 
 static void
-table_iter__toleaf(table_iter *iter)
+table_iter__advance(table_iter *iter)
 {
-	if (!iter->here)
-		return;
-	while (table_ispair(iter->here)) {
-		assert(iter->sp < 64);
-		iter->stack[iter->sp++] = table_right(iter->here);
-		iter->here = table_left(iter->here);
-	}
+	while (iter->here < iter->end && !iter->here->prog)
+		iter->here++;
+	if (iter->here >= iter->end)
+		iter->here = NULL;
 }
 
 static void
-table_iter_start(table_iter *iter, table root)
+table_iter_start(table_iter *iter, const table *root)
 {
-	iter->here = root;
-	iter->sp = 0;
-	table_iter__toleaf(iter);
+	iter->here = root->cells;
+	iter->end = root->cells + root->avail;
+	table_iter__advance(iter);
 }
 
 static void
 table_iter_next(table_iter *iter)
 {
-	assert(iter->here);
-	iter->here = iter->sp ? iter->stack[--iter->sp] : NULL;
-	table_iter__toleaf(iter);
+	iter->here++;
+	table_iter__advance(iter);
 }
 
-#define table_iter_for(iterl, root) \
-	table_iter_start(&iterl, root); iterl.here; table_iter_next(&iterl)
+#define table_iter_for(iterl, tab) \
+	table_iter_start(&iterl, &tab); iterl.here; table_iter_next(&iterl)
 
-static table*
-table__findleaf(table *root, u64 hash)
+
+static table_cell *table_find_or_add(table *tab, u64 hash, struct prog *prog);
+
+static void
+table__expand(table *tab)
 {
-	assert(*root);
-	while (table_ispair(*root))
-		root = &(*root)->body.next[!!((*root)->bit & hash)];
-	return root;
+	size_t i, oldsize, newsize;
+	table_cell *oldcells, *bees __attribute__((unused));
+
+	oldsize = tab->avail;
+	oldcells = tab->cells;
+	newsize = oldsize + (oldsize + 1) / 2;
+	tab->cells = calloc(newsize, sizeof(table_cell));
+	tab->avail = newsize;
+	tab->used = 0;
+	for (i = 0; i < oldsize; ++i)
+		if (oldcells[i].prog) {
+			bees = table_find_or_add(tab, oldcells[i].hash, oldcells[i].prog);
+			assert(!bees);
+		}
+	free(oldcells);
 }
 
-static __attribute__((unused)) table
-table_find_sloppily(table root, u64 hash)
+static table_cell *
+table_find_or_add(table *tab, u64 hash, struct prog *prog)
 {
-	return *(table__findleaf(&root, hash));
-}
+	table_cell *ptr, *end;
 
-static __attribute__((unused)) table
-table_find(table root, u64 hash)
-{
-	table there;
+	if (!tab->avail)
+		table_init(tab);
 
-	there = table_find_sloppily(root, hash);
-	return table_hash(there) == hash ? there : NULL;
-}
-
-static table
-table_find_or_add(table *root, u64 hash, struct prog *prog)
-{
-	table leaf, pair;
-	u64 old, bit;
-
-	leaf = malloc(sizeof(struct node));	
-	leaf->bit = 0;
-	leaf->body.leaf.hash = hash;
-	leaf->body.leaf.prog = prog;
-
-	if (!*root) {
-		*root = leaf;
-		return NULL;
-	}
-	root = table__findleaf(root, hash);
-	old = table_hash(*root);
-	if (old == hash) {
-		free(leaf);
-		return *root;
-	}
-	bit = old ^ hash;
-	bit = bit & -bit;
-	pair = malloc(sizeof(struct node));
-	pair->bit = bit;
-	pair->body.next[!!(hash & bit)] = leaf;
-	pair->body.next[!!(old & bit)] = *root;
-	*root = pair;
+	ptr = &tab->cells[hash % tab->avail];
+	end = tab->cells + tab->avail;
+	if (tab->used) {
+		while (ptr->prog && ptr->hash != hash)
+			if (++ptr >= end)
+				ptr = tab->cells;
+		if (ptr->prog)
+			return ptr;
+	} else
+		assert(!ptr->prog);
+	tab->used++;
+	ptr->hash = hash;
+	ptr->prog = prog;
+	if (tab->used > tab->avail / 2)
+		table__expand(tab);
 	return NULL;
 }
 
@@ -246,7 +233,7 @@ static u64 xs[MAXCASE];
 
 static void
 make_known(struct prog *prog) {
-	table old;
+	const table_cell *old;
 
 	old = table_find_or_add(&all[prog->len], prog_hash(prog), prog);
 	if (!old) {
@@ -378,10 +365,10 @@ static void ternary_cases(int len) {
 						    &in0->nodes[0], in0->len);
 						memcpy(&prog->nodes[1 + in0->len],
 						    &in1->nodes[0], in1->len);
-						memcpy(&prog->nodes[1 + in0->len + in1->len], 
+						memcpy(&prog->nodes[1 + in0->len + in1->len],
 						    &in1->nodes[0], in2->len);
 						for (i = 0; i < MAXCASE; ++i)
-							prog->out[i] = (~in0->out[i] & in1->out[i]) 
+							prog->out[i] = (~in0->out[i] & in1->out[i])
 							    | (in0->out[i] & in2->out[i]);
 					}
 				}
