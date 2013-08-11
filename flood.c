@@ -261,7 +261,7 @@ make_known(struct prog *prog) {
 	}
 	if (memcmp(&prog->out, &table_prog(old)->out, numcase * sizeof(u64)) != 0) {
 		fprintf(stderr, "THE BEES COME DOWN! %p %p\n", prog, table_prog(old));
-		abort();
+		// abort();
 	}
 	free(prog);
 }
