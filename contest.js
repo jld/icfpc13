@@ -63,11 +63,12 @@ function stat() {
 }
 exports.stat = stat;
 
-function solve(xs, robot, prob) {
+function solve(xs, robot, prob, scallback) {
    var id = prob.id;
    post("/eval", {id: id, arguments: xs}, function (s) {
       if (s.status != "ok") {
 	 console.log(id + ": FAILURE: /eval: " + s.message);
+	 scallback(false);
 	 return;
       }
       var outs = s.outputs;
@@ -77,12 +78,14 @@ function solve(xs, robot, prob) {
 	 robot(prob, xs, outs, function (soln) {
 	    if (!soln) {
 	       console.log(id + ": no solution; ABANDONING PROBLEM, DANGER, BEES, etc.");
+	       scallback(false);
 	       return;
 	    }
 	    console.log(id + ": trying " + soln);
 	    post("/guess", {id: id, program: soln}, function(s) {
 	       if (s.status == "win") {
 		  console.log(id + ": Yay!  We won!");
+		  scallback(true);
 	       } else if (s.status == "mismatch") {
 		  var new_x = s.values[0], new_out = s.values[1], wrong = s.values[2];
 		  console.log(id + ": " + new_x + " -> " + new_out + " (not " + wrong + ")");
@@ -91,6 +94,7 @@ function solve(xs, robot, prob) {
 		  attempt();
 	       } else {
 		  console.log(id + ": FAILURE: /guess: " + s.message);
+		  scallback(false);
 	       }
 	    });
 	 });

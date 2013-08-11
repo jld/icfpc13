@@ -53,7 +53,8 @@ var usual = ["0000000000000000", "ffffffffffffffff"];
 exports.set_usual = function(uu) { usual = uu; }
 var nrand = 14;
 exports.set_nrand = function(nn) { nrand = nn; }
-function solve(prob) {
-   cont.solve(usual.concat(randxs(nrand)), robot, prob);
+function solve(prob, callback) {
+   cont.solve(usual.concat(randxs(nrand)), robot, prob, callback);
 }
 exports.solve = solve;
+
