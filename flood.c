@@ -138,6 +138,7 @@ typedef enum insn {
 
 static uint32_t restricted = 0;
 static const uint32_t restrictable = 0x001f1f00;
+static int must_fold = 0;
 
 static void
 restrict_ops(const char *stuff)
@@ -157,6 +158,11 @@ restrict_ops(const char *stuff)
 		THING("xor", I_XOR);
 		THING("plus", I_PLUS);
 		THING("if0", I_IF0);
+		if (strncmp(stuff, "all", 3) == 0)
+			seen |= restrictable;
+		if (strncmp(stuff, "fold", 4) == 0 ||
+		    strncmp(stuff, "tfold", 5) == 0)
+			must_fold = 1;
 		stuff = strchr(stuff, ',');
 		if (stuff)
 			stuff++;
@@ -353,7 +359,9 @@ static int inner_limit = MAXNODE;
 static int
 discardable(int len, int fop)
 {
-	return fop == FO_INNER && len > inner_limit;
+	if (len <= inner_limit)
+		return 0;
+	return must_fold ? fop != FO_OUTER : fop == FO_INNER;
 }
 
 
