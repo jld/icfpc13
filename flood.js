@@ -58,3 +58,25 @@ function solve(prob, callback) {
 }
 exports.solve = solve;
 
+// This also doesn't really belong here.
+function seqsolve(thesize) {
+   var probs = [];
+   cont.get_problems().forEach(function(prob) {
+      if (prob.size == thesize &&
+	  (!prob.solved || prob.timeLeft) &&
+	  prob.operators.every(function(s) { return !s.match(/fold/) }))
+	 probs.push(prob);
+   });
+   var i = 0;
+   function do_one() {
+      if (i >= probs.length) {
+	 console.log("DING DING DING");
+	 return;
+      }
+      var prob = probs[i++];
+      console.log("Doing: " + JSON.stringify(prob));
+      solve(prob, do_one);
+   }
+   do_one();
+}
+exports.seqsolve = seqsolve;
