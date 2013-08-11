@@ -74,13 +74,13 @@ tree__findleaf(tree *root, u64 hash)
 	return root;
 }
 
-static tree
+static __attribute__((unused)) tree
 tree_find_sloppily(tree root, u64 hash)
 {
 	return *(tree__findleaf(&root, hash));
 }
 
-static tree
+static __attribute__((unused)) tree
 tree_find(tree root, u64 hash)
 {
 	tree there;
@@ -142,6 +142,34 @@ typedef enum insn {
 #define INENB1(i) (((i) & 020) != 0)
 #define INENB2(i) (((i) & 024) == 024)
 
+static uint32_t restricted = 0;
+static const uint32_t restrictable = 0x001f1f00;
+
+static void
+restrict_ops(const char *stuff)
+{
+	uint32_t seen = 0;
+	while (stuff) {
+#define THING(name, bit) \
+		if (strncmp(stuff, name, sizeof(name)-1) == 0)	\
+			seen |= 1 << bit
+		THING("shl1", I_SHL1);
+		THING("shr1", I_SHR1);
+		THING("shr4", I_SHR4);
+		THING("shr16", I_SHR16);
+		THING("not", I_NOT);
+		THING("and", I_AND);
+		THING("or", I_OR);
+		THING("xor", I_XOR);
+		THING("plus", I_PLUS);
+		THING("if0", I_IF0);
+		stuff = strchr(stuff, ',');
+		if (stuff)
+			stuff++;
+	}
+	restricted = restrictable & ~seen;
+}
+
 enum {
 	MAXNODE = 30,
 	MAXCASE = 16,
@@ -154,7 +182,7 @@ struct prog {
 	u64 out[MAXCASE];
 };
 
-u64
+static u64
 prog_hash(const struct prog *prog) {
 	static const u64 phi = 0x9e3779b97f4a7c15;
 	u64 hash = 0;
@@ -171,7 +199,7 @@ prog_hash(const struct prog *prog) {
 	return hash;
 }
 
-static void
+static __attribute__((unused)) void
 prog_fprint(const struct prog *prog, FILE *out) {
 	uint8_t stack[MAXNODE];
 	int i, sp, args;
@@ -247,6 +275,8 @@ base_cases(void) {
 	int i;
 
 #define base_case(node, init) do {	\
+	if (restricted & (1 << node))	\
+		break;			\
 	prog = malloc(sizeof *prog);	\
 	prog->len = 1;			\
 	prog->nodes[0] = node;		\
@@ -268,6 +298,8 @@ unary_cases(int len) {
 	int i;
 
 #define unary_case(node, sfx) do {				\
+	if (restricted & (1 << node))				\
+		break;						\
 	prog = malloc(sizeof *prog);				\
 	prog->len = len;					\
 	prog->nodes[0] = node;					\
@@ -295,6 +327,8 @@ binary_cases(int len) {
 	int i, leftlen;
 
 #define binary_case(node, infix) do {					\
+	if (restricted & (1 << node))					\
+		break;							\
 	prog = malloc(sizeof *prog);					\
 	prog->len = len;						\
 	prog->nodes[0] = node;						\
@@ -324,6 +358,9 @@ static void ternary_cases(int len) {
 	const struct prog *in0, *in1, *in2;
 	struct prog *prog;
 	int i, len0, len1;
+
+	if (restricted & (1 << I_IF0))
+		return;
 
 	for (len0 = 1; len0 < len - 2; ++len0)
 		for (tree_iter_for(t0, all[len0])) {
@@ -380,10 +417,17 @@ static void cases_upto(int limit) {
 int
 main(int argc, char **argv)
 {
-	int fd;
+	int fd, upto = 10;
 	char *rp;
 	size_t s;
 	ssize_t r;
+
+	if (argc > 1)
+		upto = atoi(argv[1]);
+	assert(upto <= MAXNODE);
+
+	if (argc > 2)
+		restrict_ops(argv[2]);
 
 	fd = open("/dev/urandom", O_RDONLY);
 	for (rp = (char*)&xs, s = sizeof(xs); s > 0; rp += r, s -= r) {
@@ -394,6 +438,6 @@ main(int argc, char **argv)
 //	for (i = 0; i < HASHCASE; ++i)
 //		fprintf(stderr, "x = 0x%016"PRIx64"\n", xs[i]);
 
-	cases_upto(10);
+	cases_upto(upto);
 	return 0;
 }
