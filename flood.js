@@ -63,13 +63,13 @@ function solve(prob, callback) {
 exports.solve = solve;
 
 // This also doesn't really belong here.
-function seqsolve(thesize, oplimit) {
+function seqsolve(thesize, oplimit, foldable) {
    var probs = [];
    cont.get_problems().forEach(function(prob) {
       if (prob.size == thesize &&
 	  !prob.solved &&
 	  prob.timeLeft !== 0 &&
-	  prob.operators.every(function(s) { return !s.match(/fold/) }) &&
+	  (foldable || prob.operators.every(function(s) { return !s.match(/fold/) })) &&
 	  (!oplimit || prob.operators.length <= oplimit))
 	 probs.push(prob);
    });
