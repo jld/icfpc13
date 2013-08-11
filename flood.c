@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "siphash24.h"
 
@@ -649,6 +650,9 @@ main(int argc, char **argv)
 
 	if ((s = getenv("FLOOD_MEMLIMIT")))
 		mem_limit = strtoul(s, NULL, 0);
+
+	if ((s = getenv("FLOOD_TIMELIMIT")))
+		alarm(atoi(s));
 
 	if (argc > 1)
 		upto = atoi(argv[1]);
