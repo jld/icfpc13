@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "siphash24.h"
+
 //
 
 typedef uint64_t u64;
@@ -193,34 +195,21 @@ prog_alloc(int folded) {
 
 static u64
 prog_hash(const struct prog *prog) {
-	static const u64 phi = 0x9e3779b97f4a7c15;
-	u64 hash = 0;
-	int i;
+	static const u64 key = 0x9e3779b97f4a7c15;
+	u64 hash;
 
 	// I have no idea what I'm doing here.  (Insert dog macro.)
 	// I really should have just imported siphash or something.
 #ifdef FOLDED
 	if (!prog_fullp(prog)) {
-		hash = 0x1717171717171717;
-		for (i = 0; i < prog->len; ++i) {
-			hash ^= prog->nodes[i];
-			hash += (hash >> 43) | (hash << 21);
-			hash ^= (hash >> 13) | (hash << 51);
-			hash += (hash >> 9) | (hash << 55);
-			hash ^= (hash >> 7) | (hash << 57);
-			hash *= phi;
-		}
+		crypto_auth((unsigned char *)&hash, prog->nodes, prog->len,
+		    (const unsigned char *)&key);
 		return hash;
 	}
 #endif
-	for (i = 0; i < numcase; ++i) {
-		hash ^= prog->out[i];
-		hash += (hash >> 43) | (hash << 21);
-		hash ^= (hash >> 13) | (hash << 51);
-		hash += (hash >> 10) | (hash << 54); // ???
-		hash ^= (hash >> 7) | (hash << 57);
-		hash *= phi;
-	}
+
+	crypto_auth((unsigned char *)&hash, (unsigned char *)prog->out, numcase * sizeof(u64),
+	    (const unsigned char *)&key);
 	return hash;
 }
 
