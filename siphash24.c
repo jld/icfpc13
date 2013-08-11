@@ -21,6 +21,12 @@ typedef uint8_t u8;
 
 #define ROTL(x,b) (u64)( ((x) << (b)) | ( (x) >> (64 - (b))) )
 
+#if __BYTE_ORDER__ && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define U32TO8_LE(p, v) (*(u32*)(p) = (v))
+#define U64TO8_LE(p, v) (*(u64*)(p) = (v))
+#define U8TO64_LE(p) (*(u64*)(p))
+#else
+
 #define U32TO8_LE(p, v)         \
     (p)[0] = (u8)((v)      ); (p)[1] = (u8)((v) >>  8); \
     (p)[2] = (u8)((v) >> 16); (p)[3] = (u8)((v) >> 24);
@@ -38,6 +44,8 @@ typedef uint8_t u8;
    ((u64)((p)[5]) << 40) | \
    ((u64)((p)[6]) << 48) | \
    ((u64)((p)[7]) << 56))
+
+#endif
 
 #define SIPROUND            \
   do {              \
