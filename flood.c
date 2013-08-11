@@ -656,7 +656,8 @@ main(int argc, char **argv)
 
 	if (argc > 1)
 		upto = atoi(argv[1]);
-	assert(upto <= MAXNODE);
+	if (upto > MAXNODE)
+		upto = MAXNODE;
 
 	if (argc > 2 && isalnum(argv[2][0]))
 		restrict_ops(argv[2]);
