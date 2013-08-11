@@ -1,0 +1,31 @@
+Quick guide to the source files:
+
+flood.c: a brute-force implementation that "flood fills" the set of
+  functions, deduplicated up a behavior on given set of inputs.
+  Responsible for all of my submitted solutions.
+
+flood.js: JavaScript wrapper for flood.c
+
+contest.js: Transport layer for the contest webapp; the part that
+  glues the actual solver to the service.
+
+lbv.js: A failed attempt at using a SAT solver to find solutions.  It
+  worked (and was kind of fun to write), but was substantially slower
+  than plain brute force.
+
+sat.js: The SAT solver glue, and logic-construction utilities.
+
+sudoku.js: An unnecessary sudoku solver, used to test the SAT code.
+
+bludgeon.c: A half-started attempt at a "top-down" brute force
+  implementation, carrying around sets of bitwise bounds on results
+  (indexed by, again, a given set of inputs) to prune the search
+  space.  Probably the "right" approach was to combine this idea with
+  flood.c, using a crit-bit trie on the unhashed output array to allow
+  efficiently iterating over expressions matching the bounds, and
+  having the bottom-up and top-down approaches meet in the middle.
+  Sadly, not enough time.
+
+siphash24.c: The siphash hash function reference implementation (with
+  a minor optimization by me).  See comments for acknowledgements.
+
