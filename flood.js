@@ -8,8 +8,12 @@ function robot(prob, xs, outs, callback) {
 	       prob.operators.join(","),
 	       xs.join(","),
 	       outs.join(",")]
+   var folding = prob.operators.indexOf("fold") >= 0
+      || prob.operators.indexOf("tfold") >= 0;
    // Note to self: ditch the stderr when parallelizing.
-   var fl = cld.spawn("./flood", args);
+   var cmd = folding ? "./foldflood" : "./flood";
+   console.log("+ " + cmd + " " + args.join(" "));
+   var fl = cld.spawn(cmd, args);
    fl.stderr.on('data', function(data) { process.stderr.write(data) });
    var acc = "";
    fl.stdout.on('data', function(data) { acc += data.toString() });
