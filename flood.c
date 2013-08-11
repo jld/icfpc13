@@ -478,6 +478,8 @@ binary_cases(int len) {
 	for (leftlen = 1; leftlen < len - leftlen; ++leftlen)
 		for (table_iter_for(t0, all[leftlen])) {
 			in0 = table_prog(t0.here);
+			if (len > inner_limit && in0->folded == FO_INNER)
+				continue;
 			for (table_iter_for(t1, all[len - 1 - leftlen])) {
 				in1 = table_prog(t1.here);
 				fop = in0->folded | in1->folded;
@@ -520,9 +522,13 @@ static void ternary_cases(int len) {
 	for (len0 = 1; len0 < len - 2; ++len0)
 		for (table_iter_for(t0, all[len0])) {
 			in0 = table_prog(t0.here);
+			if (len > inner_limit && in0->folded == FO_INNER)
+				continue;
 			for (len1 = 1; len1 < len - 1 - len0; ++len1)
 				for (table_iter_for(t1, all[len1])) {
 					in1 = table_prog(t1.here);
+					if (len > inner_limit && in1->folded == FO_INNER)
+						continue;
 #ifdef FOLDED
 					if (restricted & (1 << I_IF0))
 						goto no_if0;
