@@ -14,7 +14,7 @@ function psol() {
 	 console.log(p.soln.getbin(alu.op))
       });
       p.prob.not_that_one(p.soln);
-      p.solve(psol);
+      //      p.solve(psol);
    } else
       console.log("BEES");
 }

@@ -194,6 +194,47 @@ Program.prototype = {
       this.prob.verbosely();
       return this;
    },
+   unparse_soln: function() {
+      var s = this.soln;
+      if (!s)
+         return null;
+      var buf = "(lambda (x) ";
+      var stk = [];
+      for (var i = 0; i < this.size; ++i) {
+         switch(s.getbin(this.alus[i].op)) {
+         case '00000': buf += "0"; break;
+         case '00001': buf += "1"; break;
+         case '00100': buf += "x"; break;
+         case '01000': buf += "(shl1 "; break;
+         case '01001': buf += "(shr1 "; break;
+         case '01010': buf += "(shr4 "; break;
+         case '01011': buf += "(shr16 "; break;
+         case '01100': buf += "(not "; break;
+         case '10000': buf += "(and "; break;
+         case '10001': buf += "(or "; break;
+         case '10010': buf += "(xor "; break;
+         case '10011': buf += "(plus "; break;
+         case '10100': buf += "(if0 "; break;
+         default: buf += "#UD"; break;
+         }
+         var args =
+            s.get(this.alus[i].inenb[0]) +
+            s.get(this.alus[i].inenb[1]) +
+            s.get(this.alus[i].inenb[2]);
+         if (args)
+            stk.push(args);
+         else {
+            while (stk.length && !--stk[stk.length-1]) {
+               stk.pop();
+               buf += ")";
+            }
+            if (stk.length)
+               buf += " ";
+         }
+      }
+      buf += ")";
+      return buf;
+   }
 }
 
 
@@ -212,3 +253,13 @@ function ProgramData(ctl) {
 
 ProgramData.prototype = {
 }
+
+
+function robot(prob, xs, outs, callback) {
+   var p = new Program(prob.size - 1);
+   // FIXME: ban operators
+   for (var i = 0; i < xs.length; ++i)
+      p.constrain_hex(xs[i], outs[i]);
+   p.verbosely().solve(function() { callback(p.unparse_soln()) });
+}
+exports.robot = robot;
