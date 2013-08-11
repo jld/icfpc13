@@ -113,6 +113,8 @@ table_find_or_add(table *tab, u64 hash, struct prog *prog)
 typedef enum insn {
 	I_ZERO  = 000,
 	I_ONE   = 001,
+	I_ACC   = 002,
+	I_BYTE  = 003,
 	I_X     = 004,
 	I_SHL1  = 010,
 	I_SHR1  = 011,
@@ -123,12 +125,14 @@ typedef enum insn {
 	I_OR    = 021,
 	I_XOR   = 022,
 	I_PLUS  = 023,
-	I_IF0   = 024
+	I_IF0   = 024,
+	I_FOLD  = 034,
 } insn;
 
 #define INENB0(i) (((i) & 030) != 0)
 #define INENB1(i) (((i) & 020) != 0)
 #define INENB2(i) (((i) & 024) == 024)
+#define IFOLDP(i) (((i) & 032) == 002)
 
 static uint32_t restricted = 0;
 static const uint32_t restrictable = 0x001f1f00;
@@ -164,15 +168,27 @@ enum {
 };
 static size_t numcase = 16;
 
+enum {
+	FO_INNER = 1,
+	FO_OUTER = 2,
+	FO_WRONG = 3,
+};
+
 struct prog {
+	// FIXME: accessorize this, so ifndef FOLDED it always reads 0
+	uint8_t folded;
 	uint8_t len;
 	uint8_t nodes[MAXNODE];
 	u64 out[0];
 };
+#define prog_fullp(prog) (((prog)->folded & FO_INNER) == 0)
 
 static struct prog *
-prog_alloc(void) {
-	return malloc(sizeof(struct prog) + numcase * sizeof(u64));
+prog_alloc(int folded) {
+	size_t size = sizeof(struct prog) + (folded & FO_INNER ? 0 : numcase) * sizeof(u64);
+	struct prog *prog = malloc(size);
+	prog->folded = folded;
+	return prog;
 }
 
 static u64
@@ -181,11 +197,27 @@ prog_hash(const struct prog *prog) {
 	u64 hash = 0;
 	int i;
 
+	// I have no idea what I'm doing here.  (Insert dog macro.)
+	// I really should have just imported siphash or something.
+#ifdef FOLDED
+	if (!prog_fullp(prog)) {
+		hash = 0x1717171717171717;
+		for (i = 0; i < prog->len; ++i) {
+			hash ^= prog->nodes[i];
+			hash += (hash >> 43) | (hash << 21);
+			hash ^= (hash >> 13) | (hash << 51);
+			hash += (hash >> 9) | (hash << 55);
+			hash ^= (hash >> 7) | (hash << 57);
+			hash *= phi;
+		}
+		return hash;
+	}
+#endif
 	for (i = 0; i < numcase; ++i) {
 		hash ^= prog->out[i];
 		hash += (hash >> 43) | (hash << 21);
 		hash ^= (hash >> 13) | (hash << 51);
-		hash += (hash >> 9) | (hash << 55);
+		hash += (hash >> 10) | (hash << 54); // ???
 		hash ^= (hash >> 7) | (hash << 57);
 		hash *= phi;
 	}
@@ -195,15 +227,18 @@ prog_hash(const struct prog *prog) {
 static __attribute__((unused)) void
 prog_fprint(const struct prog *prog, FILE *out) {
 	uint8_t stack[MAXNODE];
-	int i, sp, args;
+	int i, sp, args, l;
 
 	sp = 0;
-	for (i = 0; i < prog->len; ++i) {
+	l = prog->len;
+	for (i = 0; i < l; ++i) {
 		uint8_t node = prog->nodes[i];
 
 		switch (node) {
 		case I_ZERO: fputs("0", out); break;
 		case I_ONE: fputs("1", out); break;
+		case I_ACC: fputs("z", out); break;
+		case I_BYTE: fputs("y", out); break;
 		case I_X: fputs("x", out); break;
 		case I_SHL1: fputs("(shl1 ", out); break;
 		case I_SHR1: fputs("(shr1 ", out); break;
@@ -215,36 +250,130 @@ prog_fprint(const struct prog *prog, FILE *out) {
 		case I_XOR: fputs("(xor ", out); break;
 		case I_PLUS: fputs("(plus ", out); break;
 		case I_IF0: fputs("(if0 ", out); break;
+		case I_FOLD: fputs("(fold ", out); l--; break;
 		default: assert(0);
 		}
 		args = INENB0(node) + INENB1(node) + INENB2(node);
 		if (args)
-			stack[sp++] = args;
+			stack[sp++] = args | (node == I_FOLD ? 0x80 : 0);
 		else {
-			while (sp > 0 && !--stack[sp-1]) {
+			while (sp > 0 && !(--stack[sp-1] & 0x7f)) {
 				--sp;
 				fputs(")", out);
+				if (stack[sp] == 0x80) {
+					stack[sp] = 0;
+					fputs(")", out);
+				}
 			}
-			if (sp > 0)
+			if (sp > 0) {
 				fputs(" ", out);
+				if (stack[sp-1] == 0x81)
+					fputs("(lambda (y z) ", out);
+			}
 		}
 	}
 }
+
+// I "like" how there's all this state scattered haphazardly through the file.
+static u64 xs[MAXCASE];
+
+#ifdef FOLDED
+static uint8_t *
+prog_eval(uint8_t *pc, u64 *out, const u64 *acc, const u64 *byte) {
+	u64 in0[numcase], in1[numcase], in2[numcase];
+	int i, j;
+	uint8_t *next;
+
+	// Yes, we could use INENB to hoist the recursion.
+	// But it might not be a win (unpredictable branches?) and I already have the macros.
+
+	switch (*pc++) {
+	case I_ZERO:
+		memset(out, 0, numcase * sizeof(u64));
+		return pc;
+	case I_ONE:
+		for (i = 0; i < numcase; ++i)
+			out[i] = 1;
+		return pc;
+	case I_ACC:
+		memcpy(out, acc, numcase * sizeof(u64));
+		return pc;
+	case I_BYTE:
+		memcpy(out, byte, numcase * sizeof(u64));
+		return pc;
+	case I_X:
+		memcpy(out, xs, numcase * sizeof(u64));
+		return pc;
+#define unary_eval(op, sfx)				\
+	case op:					\
+		pc = prog_eval(pc, in0, acc, byte);	\
+		for (i = 0; i < numcase; ++i)		\
+			out[i] = in0[i] sfx;		\
+		return pc
+	       	unary_eval(I_SHL1, << 1);
+		unary_eval(I_SHR1, >> 1);
+		unary_eval(I_SHR4, >> 4);
+		unary_eval(I_SHR16, >> 16);
+		unary_eval(I_NOT, ^ ~(u64)0);
+#define binary_eval(op, infix)				\
+	case op:					\
+		pc = prog_eval(pc, in0, acc, byte);	\
+		pc = prog_eval(pc, in1, acc, byte);	\
+		for (i = 0; i < numcase; ++i)		\
+			out[i] = in0[i] infix in1[i];	\
+		return pc
+		binary_eval(I_AND, &);
+		binary_eval(I_OR, |);
+		binary_eval(I_XOR, ^);
+		binary_eval(I_PLUS, +);
+	case I_IF0:
+		pc = prog_eval(pc, in0, acc, byte);
+		pc = prog_eval(pc, in1, acc, byte);
+		pc = prog_eval(pc, in2, acc, byte);
+		for (i = 0; i < numcase; ++i)
+			out[i] = in0[i] ? in2[i] : in1[i];
+		return pc;
+	case I_FOLD:
+		// out is acc; in1 is byte tmp
+		assert(!acc && !byte);
+		pc = prog_eval(pc, in0, acc, byte);
+		pc = prog_eval(pc, out, acc, byte);
+		for (j = 0; j < 8; ++j) {
+			for (i = 0; i < numcase; ++i)
+				in1[i] = (in0[i] >> (j << 3)) & 0xff;
+			next = prog_eval(pc, in2, out, in1);
+			memcpy(out, in2, numcase * sizeof(u64));
+		}
+		return next;
+	default:
+		assert(0);
+		return pc;
+	}
+}
+#endif
 
 //
 
 static table all[MAXNODE];
 static unsigned long num[MAXNODE];
-static u64 xs[MAXCASE];
 static u64 goal;
 static int goal_mode, goal_final;
 
 static void
 make_known(struct prog *prog) {
 	const table_cell *old;
+#ifdef FOLDED
+	// FIXME: stop this badness sooner
+	// But also: FO_INNER larger than (max - 4) are also badness
+	if (prog->folded == FO_WRONG) {
+		free(prog);
+		return;
+	}
+#endif
+
 	u64 hash = prog_hash(prog);
 
-	if (goal_mode && hash == goal) {
+	if (goal_mode && hash == goal && prog_fullp(prog)) {
 		fputs("Found it!\n", stderr);
 		fputs("(lambda (x) ", stdout);
 		prog_fprint(prog, stdout);
@@ -271,19 +400,24 @@ base_cases(void) {
 	struct prog *prog;
 	int i;
 
-#define base_case(node, init) do {	\
-	if (restricted & (1 << node))	\
-		break;			\
-	prog = prog_alloc();		\
-	prog->len = 1;			\
-	prog->nodes[0] = node;		\
-	for (i = 0; i < numcase; ++i)	\
-		prog->out[i] = init;	\
-	make_known(prog);		\
+#define base_case(node, init) do {		\
+	if (restricted & (1 << node))		\
+		break;				\
+	prog = prog_alloc(IFOLDP(node));	\
+	prog->len = 1;				\
+	prog->nodes[0] = node;			\
+	if (prog_fullp(prog))			\
+		for (i = 0; i < numcase; ++i)	\
+			prog->out[i] = init;	\
+	make_known(prog);			\
 } while(0)
 
 	base_case(I_ZERO, 0);
 	base_case(I_ONE, 1);
+#ifdef FOLDED
+	base_case(I_ACC, (assert(0), 0));
+	base_case(I_BYTE, (assert(0), 0));
+#endif
 	base_case(I_X, xs[i]);
 }
 
@@ -297,12 +431,13 @@ unary_cases(int len) {
 #define unary_case(node, sfx) do {				\
 	if (restricted & (1 << node))				\
 		break;						\
-	prog = prog_alloc();					\
+	prog = prog_alloc(in0->folded);				\
 	prog->len = len;					\
 	prog->nodes[0] = node;					\
 	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len); 	\
-	for (i = 0; i < numcase; ++i)				\
-		prog->out[i] = in0->out[i] sfx;			\
+	if (prog_fullp(prog))					\
+		for (i = 0; i < numcase; ++i)			\
+			prog->out[i] = in0->out[i] sfx;		\
 	make_known(prog);					\
 } while(0)
 
@@ -312,7 +447,7 @@ unary_cases(int len) {
 		unary_case(I_SHR1, >> 1);
 		unary_case(I_SHR4, >> 4);
 		unary_case(I_SHR16, >> 16);
-		unary_case(I_NOT, ^ ~0);
+		unary_case(I_NOT, ^ ~(u64)0);
 	}
 }
 
@@ -326,14 +461,15 @@ binary_cases(int len) {
 #define binary_case(node, infix) do {					\
 	if (restricted & (1 << node))					\
 		break;							\
-	prog = prog_alloc();						\
+	prog = prog_alloc(in0->folded | in1->folded);			\
 	prog->len = len;						\
 	prog->nodes[0] = node;						\
 	assert(1 + in0->len + in1->len == len);				\
 	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len);		\
 	memcpy(&prog->nodes[1 + in0->len], &in1->nodes[0], in1->len);	\
-	for (i = 0; i < numcase; ++i)					\
-		prog->out[i] = in0->out[i] infix in1->out[i];		\
+	if (prog_fullp(prog))						\
+		for (i = 0; i < numcase; ++i)				\
+			prog->out[i] = in0->out[i] infix in1->out[i];	\
 	make_known(prog);						\
 } while(0);
 
@@ -359,6 +495,15 @@ static void ternary_cases(int len) {
 	if (restricted & (1 << I_IF0))
 		return;
 
+#define ternary_preamble(fop, node)					\
+	prog = prog_alloc(fop);						\
+	prog->len = len;						\
+	prog->nodes[0] = node;						\
+	assert(1 + in0->len + in1->len + in2->len <= len);		\
+	memcpy(&prog->nodes[1], &in0->nodes[0], in0->len);		\
+	memcpy(&prog->nodes[1 + in0->len], &in1->nodes[0], in1->len);	\
+	memcpy(&prog->nodes[1 + in0->len + in1->len], &in2->nodes[0], in2->len)
+
 	for (len0 = 1; len0 < len - 2; ++len0)
 		for (table_iter_for(t0, all[len0])) {
 			in0 = table_prog(t0.here);
@@ -367,21 +512,28 @@ static void ternary_cases(int len) {
 					in1 = table_prog(t1.here);
 					for (table_iter_for(t2, all[len - 1 - len0 - len1])) {
 						in2 = table_prog(t2.here);
-						prog = prog_alloc();
-						prog->len = len;
-						prog->nodes[0] = I_IF0;
-						assert(1 + in0->len + in1->len + in2->len == len);
-						memcpy(&prog->nodes[1],
-						    &in0->nodes[0], in0->len);
-						memcpy(&prog->nodes[1 + in0->len],
-						    &in1->nodes[0], in1->len);
-						memcpy(&prog->nodes[1 + in0->len + in1->len],
-						    &in2->nodes[0], in2->len);
-						for (i = 0; i < numcase; ++i)
-							prog->out[i] =
-							    in0->out[i] ? in2->out[i] : in1->out[i];
+						ternary_preamble(in0->folded | in1->folded 
+						    | in2->folded, I_IF0);
+						if (prog_fullp(prog))
+							for (i = 0; i < numcase; ++i)
+								prog->out[i] = in0->out[i]
+								    ? in2->out[i] : in1->out[i];
 						make_known(prog);
 					}
+#ifdef FOLDED
+					if (len - 2 - len0 - len1 < 1)
+						continue;
+					for (table_iter_for(t2, all[len - 2 - len0 - len1])) {
+						in2 = table_prog(t2.here);
+						if (in0->folded != 0 || in1->folded != 0
+						    || in2->folded != FO_INNER)
+							// Irrelevant folds can be discarded
+							continue;
+						ternary_preamble(FO_OUTER, I_FOLD);
+						prog_eval(prog->nodes, prog->out, NULL, NULL);
+						make_known(prog);
+					}
+#endif
 				}
 		}
 }
@@ -462,7 +614,7 @@ main(int argc, char **argv)
 
 	if (argc > 4) {
 		numcase = MAXCASE;
-		struct prog *fake = prog_alloc();
+		struct prog *fake = prog_alloc(0);
 
 		upto--;
 		goal_mode = 1;
