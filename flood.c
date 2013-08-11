@@ -377,8 +377,10 @@ make_known(struct prog *prog) {
 		fputs(")\n", stdout);
 		exit(0);
 	}
-	if (goal_final)
+	if (goal_final) {
+		free(prog);
 		return;
+	}
 
 	old = table_find_or_add(&all[prog->len], hash, prog);
 	if (!old) {
