@@ -246,8 +246,9 @@ make_known(struct prog *prog) {
 
 	if (goal_mode && hash == goal) {
 		// Victory!
+		fputs("(lambda (x) ", stdout);
 		prog_fprint(prog, stdout);
-		fputs("\n", stdout);
+		fputs(")\n", stdout);
 		exit(0);
 	}
 	if (goal_final)
