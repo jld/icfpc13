@@ -189,6 +189,7 @@ static struct prog *
 prog_alloc(int folded) {
 	size_t size = sizeof(struct prog) + (folded & FO_INNER ? 0 : numcase) * sizeof(u64);
 	struct prog *prog = malloc(size);
+	assert(folded != FO_WRONG);
 	prog->folded = folded;
 	return prog;
 }
@@ -351,15 +352,6 @@ static int goal_mode, goal_final;
 static void
 make_known(struct prog *prog) {
 	const table_cell *old;
-#ifdef FOLDED
-	// FIXME: stop this badness sooner
-	// But also: FO_INNER larger than (max - 4) are also badness
-	if (prog->folded == FO_WRONG) {
-		free(prog);
-		return;
-	}
-#endif
-
 	u64 hash = prog_hash(prog);
 
 	if (goal_mode && hash == goal && prog_fullp(prog)) {
@@ -445,12 +437,12 @@ binary_cases(int len) {
 	table_iter t0, t1;
 	const struct prog *in0, *in1;
 	struct prog *prog;
-	int i, leftlen;
+	int i, leftlen, fop;
 
 #define binary_case(node, infix) do {					\
 	if (restricted & (1 << node))					\
 		break;							\
-	prog = prog_alloc(in0->folded | in1->folded);			\
+	prog = prog_alloc(fop);						\
 	prog->len = len;						\
 	prog->nodes[0] = node;						\
 	assert(1 + in0->len + in1->len == len);				\
@@ -467,6 +459,9 @@ binary_cases(int len) {
 			in0 = table_prog(t0.here);
 			for (table_iter_for(t1, all[len - 1 - leftlen])) {
 				in1 = table_prog(t1.here);
+				fop = in0->folded | in1->folded;
+				if (fop == FO_WRONG)
+					continue;
 				// Commutativity.  (See also the bound on leftlen.)
 				if (leftlen == len - 1 - leftlen)
 					if (t1.here > t0.here) // abstraction violation
@@ -483,14 +478,14 @@ static void ternary_cases(int len) {
 	table_iter t0, t1, t2;
 	const struct prog *in0, *in1, *in2;
 	struct prog *prog;
-	int i, len0, len1;
+	int i, len0, len1, fop;
 
 #ifndef FOLDED
 	if (restricted & (1 << I_IF0))
 		return;
 #endif
 
-#define ternary_preamble(fop, node)					\
+#define ternary_preamble(node)						\
 	prog = prog_alloc(fop);						\
 	prog->len = len;						\
 	prog->nodes[0] = node;						\
@@ -511,8 +506,10 @@ static void ternary_cases(int len) {
 #endif
 					for (table_iter_for(t2, all[len - 1 - len0 - len1])) {
 						in2 = table_prog(t2.here);
-						ternary_preamble(in0->folded | in1->folded 
-						    | in2->folded, I_IF0);
+						fop = in0->folded | in1->folded | in2->folded;
+						if (fop == FO_WRONG)
+							continue;
+						ternary_preamble(I_IF0);
 						if (prog_fullp(prog))
 							for (i = 0; i < numcase; ++i)
 								prog->out[i] = in0->out[i]
@@ -529,7 +526,8 @@ static void ternary_cases(int len) {
 						    || in2->folded != FO_INNER)
 							// Irrelevant folds can be discarded
 							continue;
-						ternary_preamble(FO_OUTER, I_FOLD);
+						fop = FO_OUTER;
+						ternary_preamble(I_FOLD);
 						prog_eval(prog->nodes, prog->out, NULL, NULL);
 						make_known(prog);
 					}
