@@ -21,13 +21,14 @@ try {
 exports.get_problems = function() { return problems };
 
 var nextreq = 0;
-function post(endpoint, json, callback, this_arg) {
+function post(endpoint, json, callback, this_arg, immed) {
    var now = Date.now();
-   if (nextreq > now) {
-      setTimeout(post, nextreq - now, endpoint, json, callback, this_arg);
+   if (!immed && nextreq > now) {
+      setTimeout(post, nextreq - now, endpoint, json, callback, this_arg, true);
+      nextreq += delay;
       return;
    }
-   nextreq = now + delay;
+   nextreq = Math.max(nextreq, now + delay);
    var data = json ? JSON.stringify(json) : "";
    var spec = {
       hostname: the_host,
@@ -43,6 +44,8 @@ function post(endpoint, json, callback, this_arg) {
 	    console.log(endpoint + ": HTTP ERROR " + res.statusCode + ": " + acc);
 	    if (res.statusCode == 429)
 	       post(endpoint, json, callback, this_arg);
+	    else
+	       callback.call(this_arg, null);
 	    return;
 	 }
 	 callback.call(this_arg, JSON.parse(acc))
@@ -74,6 +77,7 @@ exports.stat = stat;
 function solve(xs, robot, prob, scallback) {
    var id = prob.id;
    post("/eval", {id: id, arguments: xs}, function (s) {
+      s = s || {};
       if (s.status != "ok") {
 	 console.log(id + ": FAILURE: /eval: " + s.message);
 	 scallback(false);
@@ -91,6 +95,7 @@ function solve(xs, robot, prob, scallback) {
 	    }
 	    console.log(id + ": trying " + soln);
 	    post("/guess", {id: id, program: soln}, function(s) {
+	       s = s || {};
 	       if (s.status == "win") {
 		  console.log(id + ": Yay!  We won!");
 		  if (scallback)
