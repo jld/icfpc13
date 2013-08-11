@@ -473,11 +473,15 @@ binary_cases(int len) {
 	make_known(prog);						\
 } while(0);
 
-	for (leftlen = 1; leftlen < len - 1; ++leftlen)
+	for (leftlen = 1; leftlen < len - leftlen; ++leftlen)
 		for (table_iter_for(t0, all[leftlen])) {
 			in0 = table_prog(t0.here);
 			for (table_iter_for(t1, all[len - 1 - leftlen])) {
 				in1 = table_prog(t1.here);
+				// Commutativity.  (See also the bound on leftlen.)
+				if (leftlen == len - 1 - leftlen)
+					if (t1.here > t0.here) // abstraction violation
+						break;
 				binary_case(I_AND, &);
 				binary_case(I_OR, |);
 				binary_case(I_XOR, ^);
