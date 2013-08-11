@@ -48,8 +48,12 @@ function randxs(n) {
 }
 exports.randxs = randxs;
 
-function solve(prob, n) {
-   n = n || 16;
-   cont.solve(randxs(n), robot, prob);
+
+var usual = ["0000000000000000", "ffffffffffffffff"];
+exports.set_usual = function(uu) { usual = uu; }
+var nrand = 14;
+exports.set_nrand = function(nn) { nrand = nn; }
+function solve(prob) {
+   cont.solve(usual.concat(randxs(nrand)), robot, prob);
 }
 exports.solve = solve;
