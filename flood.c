@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,13 +138,14 @@ typedef enum insn {
 	I_IF0   = 024
 } insn;
 
-#define INENB0(i) (((i) & 010) != 0)
+#define INENB0(i) (((i) & 030) != 0)
 #define INENB1(i) (((i) & 020) != 0)
 #define INENB2(i) (((i) & 024) == 024)
 
 enum {
 	MAXNODE = 30,
 	MAXCASE = 16,
+	HASHCASE = MAXCASE,
 };
 
 struct prog {
@@ -152,15 +154,60 @@ struct prog {
 	u64 out[MAXCASE];
 };
 
-static u64
+u64
 prog_hash(const struct prog *prog) {
 	static const u64 phi = 0x9e3779b97f4a7c15;
 	u64 hash = 0;
 	int i;
 
-	for (i = 0; i < MAXCASE; ++i)
-		hash = (hash ^ (hash >> 21) ^ prog->out[i]) * phi;
+	for (i = 0; i < HASHCASE; ++i) {
+		hash ^= prog->out[i];
+		hash += (hash >> 43) | (hash << 21);
+		hash ^= (hash >> 13) | (hash << 51);
+		hash += (hash >> 9) | (hash << 55);
+		hash ^= (hash >> 7) | (hash << 57);
+		hash *= phi;
+	}
 	return hash;
+}
+
+static void
+prog_fprint(const struct prog *prog, FILE *out) {
+	uint8_t stack[MAXNODE];
+	int i, sp, args;
+
+	sp = 0;
+	for (i = 0; i < prog->len; ++i) {
+		uint8_t node = prog->nodes[i];
+
+		switch (node) {
+		case I_ZERO: fputs("0", out); break;
+		case I_ONE: fputs("1", out); break;
+		case I_X: fputs("x", out); break;
+		case I_SHL1: fputs("(shl1 ", out); break;
+		case I_SHR1: fputs("(shr1 ", out); break;
+		case I_SHR4: fputs("(shr4 ", out); break;
+		case I_SHR16: fputs("(shr16 ", out); break;
+		case I_NOT: fputs("(not ", out); break;
+		case I_AND: fputs("(and ", out); break;
+		case I_OR: fputs("(or ", out); break;
+		case I_XOR: fputs("(xor ", out); break;
+		case I_PLUS: fputs("(plus ", out); break;
+		case I_IF0: fputs("(if0 ", out); break;
+		default: assert(0);
+		}
+		args = INENB0(node) + INENB1(node) + INENB2(node);
+		if (args)
+			stack[sp++] = args;
+		else {
+			while (sp > 0 && !--stack[sp-1]) {
+				--sp;
+				fputs(")", out);
+			}
+			if (sp > 0)
+				fputs(" ", out);
+		}
+	}
 }
 
 //
@@ -178,9 +225,18 @@ make_known(struct prog *prog) {
 		++num[prog->len];
 		return;
 	}
-	if (memcmp(&prog->out, &tree_prog(old)->out, sizeof(prog->out)) != 0) {
-		fprintf(stderr, "THE BEES COME DOWN!\n");
+	if (memcmp(&prog->out, &tree_prog(old)->out, HASHCASE * 8) != 0) {
+		fprintf(stderr, "THE BEES COME DOWN! %p %p\n", prog, tree_prog(old));
 		abort();
+	}
+	if (memcmp(&prog->out, &tree_prog(old)->out, MAXCASE * 8) != 0) {
+#if 0
+		fputs("Collision: ", stderr);
+		prog_fprint(tree_prog(old), stderr);
+		fputs(" != ", stderr);
+		prog_fprint(prog, stderr);
+		fputs("\n", stderr);
+#endif
 	}
 	free(prog);
 }
@@ -335,6 +391,8 @@ main(int argc, char **argv)
 		if (r <= 0)
 			abort();
 	}
+//	for (i = 0; i < HASHCASE; ++i)
+//		fprintf(stderr, "x = 0x%016"PRIx64"\n", xs[i]);
 
 	cases_upto(10);
 	return 0;
